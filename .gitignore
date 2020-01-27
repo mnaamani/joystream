@@ -16,3 +16,7 @@ joystream_runtime.wasm
 
 # Vim
 .*.sw*
+
+
+# All cargo locks.
+**/Cargo.lock
