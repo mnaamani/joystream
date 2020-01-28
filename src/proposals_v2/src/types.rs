@@ -1,3 +1,6 @@
+//! Proposals types module for the Joystream platform. Version 2.
+//! Provides types for the proposal engine.
+
 use codec::{Decode, Encode};
 use rstd::prelude::*;
 
@@ -50,7 +53,6 @@ impl Default for VoteKind {
 pub struct ProposalParameters {
     /// During this period, votes can be accepted
     pub voting_period: u64,
-
     //pub stake: BalanceOf<T>, //<T: GovernanceCurrency>
 }
 
@@ -66,7 +68,6 @@ pub struct Proposal<BlockNumber, AccountId> {
 
     /// When it was created.
     pub created: BlockNumber,
-
     // Any stake associated with the proposal.
     //pub stake: Option<BalanceOf<T>>
 
@@ -81,5 +82,5 @@ pub struct Vote<AccountId> {
     pub voter_id: AccountId,
 
     /// Vote kind
-    pub vote_kind: VoteKind
+    pub vote_kind: VoteKind,
 }

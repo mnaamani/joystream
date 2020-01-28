@@ -3,7 +3,6 @@ mod mock;
 use super::*;
 use mock::*;
 
-
 /*
 
     fn set_balance_proposal(value: u64) -> Call {
@@ -34,9 +33,11 @@ fn create_text_proposal() {
         ));
 
         let parameters = ProposalParameters { voting_period: 3 };
-        mock::Proposals::create_proposal(origin, 1, parameters, Box::new(text_proposal_call)).unwrap();
+        let proposals_id =
+            mock::Proposals::create_proposal(origin, 1, parameters, Box::new(text_proposal_call))
+                .unwrap();
 
-        mock::Proposals::execute_proposal();
+        mock::Proposals::execute_proposal(proposals_id);
     });
 }
 

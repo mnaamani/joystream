@@ -8,17 +8,13 @@
 //! - create_proposal
 
 use rstd::boxed::Box;
+use rstd::fmt::Debug;
 use rstd::prelude::*;
 
-use runtime_primitives::traits::{ Dispatchable, EnsureOrigin};
+use runtime_primitives::traits::{Dispatchable, EnsureOrigin};
+use runtime_primitives::DispatchError;
 
-use srml_support::{
-    dispatch,
-    decl_module,
-    decl_storage,
-    Parameter,
-};
-
+use srml_support::{decl_module, decl_storage, dispatch, print, Parameter};
 
 use super::*;
 
@@ -31,10 +27,10 @@ pub trait Trait: system::Trait + timestamp::Trait {
     type ProposalCode: Parameter + Dispatchable<Origin = Self::Origin> + Default;
 
     /// Origin from which proposals must come.
-    type ProposalOrigin: EnsureOrigin<Self::Origin, Success=()>;
+    type ProposalOrigin: EnsureOrigin<Self::Origin, Success = ()>;
 
     /// Origin from which votes must come.
-    type VoteOrigin: EnsureOrigin<Self::Origin, Success=Self::AccountId>;
+    type VoteOrigin: EnsureOrigin<Self::Origin, Success = Self::AccountId>;
 }
 
 /*
@@ -63,7 +59,6 @@ decl_storage! {
         VotesByProposalId get(fn votes_by_proposal): map u32 => Vec<Vote<T::AccountId>>;
     }
 }
-
 
 /*
 
@@ -141,7 +136,10 @@ impl<T: Trait> Module<T> {
 
     // Actual vote processor. Stores votes for proposal.
     fn process_vote(voter_id: T::AccountId, proposal_id: u32, vote: VoteKind) -> dispatch::Result {
-        let new_vote = Vote{voter_id, vote_kind: vote};
+        let new_vote = Vote {
+            voter_id,
+            vote_kind: vote,
+        };
         if <VotesByProposalId<T>>::exists(proposal_id) {
             // Append a new vote to other votes on this proposal:
             <VotesByProposalId<T>>::mutate(proposal_id, |votes| votes.push(new_vote));
@@ -153,10 +151,16 @@ impl<T: Trait> Module<T> {
     }
 
     // Executes approved proposal code
-    fn execute_proposal(proposal_id: u32){
-        let origin = system::RawOrigin::Root.into();
+    pub fn execute_proposal(proposal_id: u32) {
+        let origin = system::RawOrigin::None.into();
+        // let origin = system::RawOrigin::Root.into();
         let proposal = Self::proposal_codes(proposal_id);
 
-        let _ = proposal.dispatch(origin);
+        let result = proposal.dispatch(origin);
+
+        if let Err(e) = result {
+            let e: DispatchError = e.into();
+            print(e);
+        };
     }
 }

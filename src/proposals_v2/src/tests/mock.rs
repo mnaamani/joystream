@@ -41,7 +41,6 @@ impl Default for Call {
     }
 }
 
-
 impl crate::engine::Trait for Test {
     type ProposalCode = Call;
 
@@ -76,7 +75,6 @@ impl timestamp::Trait for Test {
     type MinimumPeriod = MinimumPeriod;
 }
 
-
 parameter_types! {
     pub const ExistentialDeposit: u32 = 0;
     pub const TransferFee: u32 = 0;
@@ -102,7 +100,6 @@ impl balances::Trait for Test {
     type TransferFee = TransferFee;
     type CreationFee = CreationFee;
 }
-
 
 // TODO add a Hook type to capture TriggerElection and CouncilElected hooks
 
