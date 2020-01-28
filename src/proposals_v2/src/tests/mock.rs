@@ -46,6 +46,8 @@ impl crate::engine::Trait for Test {
     type ProposalCode = Call;
 
     type ProposalOrigin = system::EnsureRoot<Self::AccountId>;
+
+    type VoteOrigin = system::EnsureSigned<Self::AccountId>;
 }
 
 impl crate::codex::Trait for Test {}

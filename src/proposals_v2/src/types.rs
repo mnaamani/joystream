@@ -48,21 +48,38 @@ impl Default for VoteKind {
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[derive(Encode, Decode, Default, Clone, PartialEq, Eq, Debug)]
 pub struct ProposalParameters {
+    /// During this period, votes can be accepted
     pub voting_period: u64,
+
     //pub stake: BalanceOf<T>, //<T: GovernanceCurrency>
 }
 
+/// 'Proposal' contains information necessary for the proposal system functioning.
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[derive(Encode, Decode, Default, Clone, PartialEq, Eq, Debug)]
 pub struct Proposal<BlockNumber, AccountId> {
+    /// Proposals parameter, characterize different proposal types.
     pub parameters: ProposalParameters,
 
     /// Identifier of member proposing.
     pub proposer_id: AccountId,
 
-    // Any stake associated with the proposal.
-    //pub stake: Option<BalanceOf<T>>
     /// When it was created.
     pub created: BlockNumber,
+
+    // Any stake associated with the proposal.
+    //pub stake: Option<BalanceOf<T>>
+
     //Stage: One among the following.
+}
+
+/// Vote. Characterized by voter and vote kind.
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[derive(Encode, Decode, Default, Clone, PartialEq, Eq, Debug)]
+pub struct Vote<AccountId> {
+    /// Origin of the vote
+    pub voter_id: AccountId,
+
+    /// Vote kind
+    pub vote_kind: VoteKind
 }
