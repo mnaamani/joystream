@@ -20,9 +20,6 @@ use super::*;
 
 /// Proposals engine trait.
 pub trait Trait: system::Trait + timestamp::Trait {
-    /// The overarching event type.
-    //type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
-
     /// Proposals executable code. Can be instantiated by external module Call enum members.
     type ProposalCode: Parameter + Dispatchable<Origin = Self::Origin> + Default;
 
@@ -32,16 +29,6 @@ pub trait Trait: system::Trait + timestamp::Trait {
     /// Origin from which votes must come.
     type VoteOrigin: EnsureOrigin<Self::Origin, Success = Self::AccountId>;
 }
-
-/*
-
-use rstd::vec::Vec;
-
-Proposals get(fn proposals): Vec<T::Proposal>
-
-<Proposals<T>>::append_or_put(&[*proposal][..]);
-
-*/
 
 // Storage for the proposals module
 decl_storage! {
@@ -57,40 +44,30 @@ decl_storage! {
 
         /// Map votes by proposal id.
         VotesByProposalId get(fn votes_by_proposal): map u32 => Vec<Vote<T::AccountId>>;
+
+        /// Ids of proposals that are open for voting (have not been finalized yet).
+        ActiveProposalIds get(active_proposal_ids): Vec<u32> = vec![];
+
+        /// Proposal tally results map
+        TallyResults get(tally_results): map u32 => TallyResult<T::BlockNumber>;
     }
 }
-
-/*
-
- fn vote_on_proposal(origin, proposal_id: u32, vote: VoteKind) {
-            let voter = ensure_signed(origin)?;
-            ensure!(Self::is_councilor(&voter), MSG_ONLY_COUNCILORS_CAN_VOTE);
-
-            ensure!(<Proposals<T>>::exists(proposal_id), MSG_PROPOSAL_NOT_FOUND);
-            let proposal = Self::proposals(proposal_id);
-
-            ensure!(proposal.status == Active, MSG_PROPOSAL_FINALIZED);
-
-            let not_expired = !Self::is_voting_period_expired(proposal.proposed_at);
-            ensure!(not_expired, MSG_PROPOSAL_EXPIRED);
-
-            let did_not_vote_before = !<VoteByAccountAndProposal<T>>::exists((voter.clone(), proposal_id));
-            ensure!(did_not_vote_before, MSG_YOU_ALREADY_VOTED);
-
-            Self::_process_vote(voter, proposal_id, vote)?;
-        }
-
-*/
 
 decl_module! {
     /// 'Proposal engine' substrate module
     pub struct Module<T: Trait> for enum Call where origin: T::Origin {
-
         /// Vote extrinsic. Conditions:  origin must allow votes.
         fn vote(origin, proposal_id: u32, vote: VoteKind) -> dispatch::Result {
             let voter_id = T::VoteOrigin::ensure_origin(origin)?;
 
             Self::process_vote(voter_id, proposal_id, vote)
+        }
+
+        /// Block finalization. Perform voting period check and vote result tally.
+        fn on_finalize(_n: T::BlockNumber) {
+            if let Err(e) = Self::tally() {
+                print(e);
+            }
         }
     }
 }
@@ -105,7 +82,7 @@ impl<T: Trait> Module<T> {
     pub fn create_proposal(
         origin: T::Origin,
         proposer_id: T::AccountId,
-        parameters: ProposalParameters,
+        parameters: ProposalParameters<T::BlockNumber>,
         proposal_code: Box<T::ProposalCode>,
     ) -> Result<u32, CreateProposalError> {
         T::ProposalOrigin::ensure_origin(origin).map_err(|_| CreateProposalError {})?;
@@ -117,11 +94,13 @@ impl<T: Trait> Module<T> {
             created: Self::current_block(),
             parameters,
             proposer_id,
+            status: ProposalStatus::Active,
         };
 
         // mutation
         <Proposals<T>>::insert(new_proposal_id, new_proposal);
         <ProposalCode<T>>::insert(new_proposal_id, proposal_code);
+        ActiveProposalIds::mutate(|ids| ids.push(new_proposal_id));
         ProposalCount::put(next_proposal_count_value);
 
         Ok(new_proposal_id)
@@ -151,9 +130,9 @@ impl<T: Trait> Module<T> {
     }
 
     // Executes approved proposal code
-    pub fn execute_proposal(proposal_id: u32) {
-        let origin = system::RawOrigin::None.into();
-        // let origin = system::RawOrigin::Root.into();
+    fn execute_proposal(proposal_id: u32) {
+        //let origin = system::RawOrigin::None.into();
+        let origin = system::RawOrigin::Root.into();
         let proposal = Self::proposal_codes(proposal_id);
 
         let result = proposal.dispatch(origin);
@@ -162,5 +141,107 @@ impl<T: Trait> Module<T> {
             let e: DispatchError = e.into();
             print(e);
         };
+    }
+
+    /// Get the voters for the current proposal.
+    pub fn tally() -> dispatch::Result {
+        let quorum: u32 = 1;
+
+        for &proposal_id in Self::active_proposal_ids().iter() {
+            let votes = Self::votes_by_proposal(proposal_id);
+            let proposal = Self::proposals(proposal_id);
+
+            let mut abstentions: u32 = 0;
+            let mut approvals: u32 = 0;
+            let mut rejections: u32 = 0;
+
+            for vote in votes.iter() {
+                match vote.vote_kind {
+                    VoteKind::Abstain => abstentions += 1,
+                    VoteKind::Approve => approvals += 1,
+                    VoteKind::Reject => rejections += 1,
+                }
+            }
+
+            let is_expired = proposal.is_voting_period_expired(Self::current_block());
+
+            // We need to check that the council is not empty because otherwise,
+            // if there is no votes on a proposal it will be counted as if
+            // all 100% (zero) councilors voted on the proposal and should be approved.
+
+            let quorum_reached = quorum > 0 && approvals >= quorum;
+
+            // Don't approve a proposal right after quorum reached
+            // if not all councilors casted their votes.
+            // Instead let other councilors cast their vote
+            // up until the proposal's expired.
+
+            let new_status: Option<ProposalStatus> = if quorum_reached {
+                Some(ProposalStatus::Approved)
+            } else {
+                if is_expired {
+                    // Proposal has been expired and quorum not reached.
+                    Some(ProposalStatus::Expired)
+                } else {
+                    None
+                }
+            };
+
+            // Some(ProposalStatus::Rejected)
+
+            // TODO move next block outside of tally to 'end_block'
+            if let Some(status) = new_status {
+                Self::update_proposal_status(proposal_id, status.clone())?;
+                let tally_result = TallyResult {
+                    proposal_id,
+                    abstentions,
+                    approvals,
+                    rejections,
+                    status,
+                    finalized_at: Self::current_block(),
+                };
+                <TallyResults<T>>::insert(proposal_id, &tally_result);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Updates proposal status and removes proposal from active ids.
+    fn update_proposal_status(proposal_id: u32, new_status: ProposalStatus) -> dispatch::Result {
+        let all_active_ids = Self::active_proposal_ids();
+        let all_len = all_active_ids.len();
+        let other_active_ids: Vec<u32> = all_active_ids
+            .into_iter()
+            .filter(|&id| id != proposal_id)
+            .collect();
+
+        let not_found_in_active = other_active_ids.len() == all_len;
+        if not_found_in_active {
+            // Seems like this proposal's status has been updated and removed from active.
+            Err("MSG_PROPOSAL_STATUS_ALREADY_UPDATED")
+        } else {
+            let pid = proposal_id.clone();
+            match new_status {
+                ProposalStatus::Rejected | ProposalStatus::Expired => Self::reject_proposal(pid)?,
+                ProposalStatus::Approved => Self::approve_proposal(pid)?,
+                ProposalStatus::Active => { /* nothing */ }
+            }
+            ActiveProposalIds::put(other_active_ids);
+            <Proposals<T>>::mutate(proposal_id, |p| p.status = new_status.clone());
+            Ok(())
+        }
+    }
+
+    /// Reject a proposal. The staked deposit will be returned to a proposer.
+    fn reject_proposal(_proposal_id: u32) -> dispatch::Result {
+        Ok(())
+    }
+
+    /// Approve a proposal. The staked deposit will be returned.
+    fn approve_proposal(proposal_id: u32) -> dispatch::Result {
+        Self::execute_proposal(proposal_id);
+
+        Ok(())
     }
 }
