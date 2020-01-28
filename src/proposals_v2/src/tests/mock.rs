@@ -1,8 +1,5 @@
 #![cfg(test)]
 
-pub use crate::governance::{council, election, proposals};
-pub use crate::currency::GovernanceCurrency;
-use crate::membership;
 pub use system;
 
 pub use primitives::{Blake2Hasher, H256};
@@ -44,11 +41,14 @@ impl Default for Call {
     }
 }
 
-impl crate::governance::proposals_v2::engine::Trait for Test {
+
+impl crate::engine::Trait for Test {
     type ProposalCode = Call;
+
+    type ProposalOrigin = system::EnsureRoot<Self::AccountId>;
 }
 
-impl crate::governance::proposals_v2::codex::Trait for Test {}
+impl crate::codex::Trait for Test {}
 
 impl system::Trait for Test {
     type Origin = Origin;
@@ -73,24 +73,7 @@ impl timestamp::Trait for Test {
     type OnTimestampSet = ();
     type MinimumPeriod = MinimumPeriod;
 }
-impl council::Trait for Test {
-    type Event = ();
 
-    type CouncilTermEnded = (Election,);
-}
-impl election::Trait for Test {
-    type Event = ();
-
-    type CouncilElected = (Council,);
-}
-impl membership::members::Trait for Test {
-    type Event = ();
-    type MemberId = u32;
-    type SubscriptionId = u32;
-    type PaidTermId = u32;
-    type ActorId = u32;
-    type InitialMembersBalance = InitialMembersBalance;
-}
 
 parameter_types! {
     pub const ExistentialDeposit: u32 = 0;
@@ -118,53 +101,18 @@ impl balances::Trait for Test {
     type CreationFee = CreationFee;
 }
 
-impl GovernanceCurrency for Test {
-    type Currency = balances::Module<Self>;
-}
 
 // TODO add a Hook type to capture TriggerElection and CouncilElected hooks
 
 // This function basically just builds a genesis storage key/value store according to
 // our desired mockup.
 pub fn initial_test_ext() -> runtime_io::TestExternalities {
-    let mut t = system::GenesisConfig::default()
+    let t = system::GenesisConfig::default()
         .build_storage::<Test>()
         .unwrap();
-
-    membership::members::GenesisConfig::<Test> {
-        default_paid_membership_fee: 0,
-        members: vec![
-            (1, "member1".into(), "".into(), "".into()),
-            (2, "member2".into(), "".into(), "".into()),
-            (3, "member3".into(), "".into(), "".into()),
-            (4, "member4".into(), "".into(), "".into()),
-            (5, "member5".into(), "".into(), "".into()),
-            (6, "member6".into(), "".into(), "".into()),
-            (7, "member7".into(), "".into(), "".into()),
-            (8, "member8".into(), "".into(), "".into()),
-            (9, "member9".into(), "".into(), "".into()),
-            (10, "member10".into(), "".into(), "".into()),
-            (11, "member11".into(), "".into(), "".into()),
-            (12, "member12".into(), "".into(), "".into()),
-            (13, "member13".into(), "".into(), "".into()),
-            (14, "member14".into(), "".into(), "".into()),
-            (15, "member15".into(), "".into(), "".into()),
-            (16, "member16".into(), "".into(), "".into()),
-            (17, "member17".into(), "".into(), "".into()),
-            (18, "member18".into(), "".into(), "".into()),
-            (19, "member19".into(), "".into(), "".into()),
-            (20, "member20".into(), "".into(), "".into()),
-        ],
-    }
-    .assimilate_storage(&mut t)
-    .unwrap();
 
     t.into()
 }
 
-pub type Election = election::Module<Test>;
-pub type Council = council::Module<Test>;
-pub type System = system::Module<Test>;
-pub type Balances = balances::Module<Test>;
-pub type ProposalCodex = crate::governance::proposals_v2::codex::Module<Test>;
-pub type Proposals = crate::governance::proposals_v2::engine::Module<Test>;
+pub type ProposalCodex = crate::codex::Module<Test>;
+pub type Proposals = crate::engine::Module<Test>;

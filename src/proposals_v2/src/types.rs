@@ -49,7 +49,6 @@ impl Default for VoteKind {
 #[derive(Encode, Decode, Default, Clone, PartialEq, Eq, Debug)]
 pub struct ProposalParameters {
     pub voting_period: u64,
-
     //pub stake: BalanceOf<T>, //<T: GovernanceCurrency>
 }
 
@@ -63,9 +62,7 @@ pub struct Proposal<BlockNumber, AccountId> {
 
     // Any stake associated with the proposal.
     //pub stake: Option<BalanceOf<T>>
-
     /// When it was created.
     pub created: BlockNumber,
-
     //Stage: One among the following.
 }

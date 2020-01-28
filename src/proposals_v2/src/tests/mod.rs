@@ -1,9 +1,8 @@
 mod mock;
 
-use mock::*;
 use super::*;
+use mock::*;
 
-use crate::governance::proposals_v2::*;
 
 /*
 
@@ -12,7 +11,6 @@ use crate::governance::proposals_v2::*;
     }
 
 */
-
 
 /*
 
@@ -27,16 +25,16 @@ use crate::governance::proposals_v2::*;
 #[test]
 fn create_text_proposal() {
     initial_test_ext().execute_with(|| {
-        let origin = Origin::signed(1);
+        let origin = system::RawOrigin::Root.into();
+        //let origin = Origin::signed(1);
 
-        let text_proposal_call = mock::Call::ProposalCodex(
-            codex::Call::create_text_proposal(b"title".to_vec(), b"body".to_vec()),
-        );
+        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::create_text_proposal(
+            b"title".to_vec(),
+            b"body".to_vec(),
+        ));
 
-        let parameters = ProposalParameters{
-            voting_period: 3
-        };
-        mock::Proposals::create_proposal(origin, 1, parameters, Box::new(text_proposal_call));
+        let parameters = ProposalParameters { voting_period: 3 };
+        mock::Proposals::create_proposal(origin, 1, parameters, Box::new(text_proposal_call)).unwrap();
 
         mock::Proposals::execute_proposal();
     });

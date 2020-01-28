@@ -1,19 +1,14 @@
 use rstd::boxed::Box;
 use rstd::prelude::*;
 
-use runtime_primitives::traits::{Dispatchable, DispatchResult};
-use runtime_primitives::{DispatchError};
+use runtime_primitives::traits::{ Dispatchable, EnsureOrigin};
 
 use srml_support::{
-    //    decl_event,
     decl_module,
-    decl_storage, //dispatch, ensure
+    decl_storage,
     Parameter,
 };
 
-//use system::{ensure_root};
-
-//use crate::currency::{BalanceOf, GovernanceCurrency};
 
 use super::*;
 
@@ -22,6 +17,9 @@ pub trait Trait: system::Trait + timestamp::Trait {
     //type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
 
     type ProposalCode: Parameter + Dispatchable<Origin = Self::Origin> + Default;
+
+    /// Origin from which proposals must come.
+    type ProposalOrigin: EnsureOrigin<Self::Origin, Success=()>;
 }
 
 /*
@@ -49,44 +47,18 @@ decl_storage! {
 
 decl_module! {
     pub struct Module<T: Trait> for enum Call where origin: T::Origin {
+        fn vote(_origin) {
 
-//        /// Create proposal. Requires root permissions.
-//        fn create_proposal(origin,
-//            proposer_id : T::AccountId,
-//            parameters : ProposalParameters,
-//            proposal_code: Box<T::ProposalCode>
-//        ) {
-//            ensure_root(origin)?;
-//
-//            let next_proposal_count_value = Self::proposal_count() + 1;
-//            let new_proposal_id = next_proposal_count_value;
-//
-//            let new_proposal = Proposal {
-//                created : Self::current_block(),
-//                parameters,
-//                proposer_id
-//            };
-//
-//            // mutation
-//            <Proposals<T>>::insert(new_proposal_id, new_proposal);
-//            <ProposalCode<T>>::insert(new_proposal_id, proposal_code);
-//            ProposalCount::put(next_proposal_count_value);
-//        }
+        }
     }
 }
 
-//pub type ProposalsDispatchResult = DispatchResult<DispatchError>;
-//pub type SystemResult = Result<(), system::Error>;
-//
-//impl From<Result<(), system::Error>> for ProposalsDispatchResult {
-//    fn from(_: SystemResult) -> Self {
-//        Err(DispatchError::new(None, 0, Some("Insufficient rights")))
-//    }
-//}
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct CreateProposalError {}
 
 impl<T: Trait> Module<T> {
     // Wrapper-function over system::block_number()
-    fn current_block() -> T::BlockNumber {
+    pub fn current_block() -> T::BlockNumber {
         <system::Module<T>>::block_number()
     }
 
@@ -94,17 +66,18 @@ impl<T: Trait> Module<T> {
         let origin = system::RawOrigin::Root.into();
 
         let proposal = Self::proposal_codes(1);
-        proposal.dispatch(origin);
+        let _ = proposal.dispatch(origin);
     }
 
     // TODO: introduce own error types
     // Create proposal. Requires root permissions.
-    pub fn create_proposal(origin: T::Origin,
-                           proposer_id: T::AccountId,
-                           parameters: ProposalParameters,
-                           proposal_code: Box<T::ProposalCode>
-    ) -> DispatchResult<DispatchError> {
-//        ensure_root(origin)?;
+    pub fn create_proposal(
+        origin: T::Origin,
+        proposer_id: T::AccountId,
+        parameters: ProposalParameters,
+        proposal_code: Box<T::ProposalCode>,
+    ) -> Result<(), CreateProposalError> {
+        T::ProposalOrigin::ensure_origin(origin).map_err(|_| CreateProposalError {})?;
 
         let next_proposal_count_value = Self::proposal_count() + 1;
         let new_proposal_id = next_proposal_count_value;
@@ -112,7 +85,7 @@ impl<T: Trait> Module<T> {
         let new_proposal = Proposal {
             created: Self::current_block(),
             parameters,
-            proposer_id
+            proposer_id,
         };
 
         // mutation

@@ -18,7 +18,7 @@ decl_storage! {
 
 decl_module! {
     pub struct Module<T: Trait> for enum Call where origin: T::Origin {
-        fn create_text_proposal(origin, title: Vec<u8>, body: Vec<u8>) {
+        fn create_text_proposal(_origin, _title: Vec<u8>, _body: Vec<u8>) {
                 print("text");
         }
     }

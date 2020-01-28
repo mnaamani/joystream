@@ -21,11 +21,10 @@ std = [
     'serde',
 ]
 
-[dependencies.balances]
-default_features = false
-git = 'https://github.com/paritytech/substrate.git'
-package = 'srml-balances'
-rev = '0e3001a1ad6fa3d1ba7da7342a8d0d3b3facb2f3'
+[dependencies.serde]
+features = ['derive']
+optional = true
+version = '1.0.101'
 
 [dependencies.codec]
 default-features = false
@@ -45,16 +44,16 @@ git = 'https://github.com/paritytech/substrate.git'
 package = 'sr-std'
 rev = '0e3001a1ad6fa3d1ba7da7342a8d0d3b3facb2f3'
 
-
-[dependencies.serde]
-features = ['derive']
-optional = true
-version = '1.0.101'
-
 [dependencies.runtime-primitives]
 default_features = false
 git = 'https://github.com/paritytech/substrate.git'
 package = 'sr-primitives'
+rev = '0e3001a1ad6fa3d1ba7da7342a8d0d3b3facb2f3'
+
+[dependencies.sr-staking-primitives]
+default_features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'sr-staking-primitives'
 rev = '0e3001a1ad6fa3d1ba7da7342a8d0d3b3facb2f3'
 
 [dependencies.srml-support]
@@ -75,23 +74,20 @@ git = 'https://github.com/paritytech/substrate.git'
 package = 'srml-timestamp'
 rev = '0e3001a1ad6fa3d1ba7da7342a8d0d3b3facb2f3'
 
-[dependencies.sr-staking-primitives]
-default_features = false
-git = 'https://github.com/paritytech/substrate.git'
-package = 'sr-staking-primitives'
-rev = '0e3001a1ad6fa3d1ba7da7342a8d0d3b3facb2f3'
-
 [dependencies.staking]
 default_features = false
 git = 'https://github.com/paritytech/substrate.git'
 package = 'srml-staking'
 rev = '0e3001a1ad6fa3d1ba7da7342a8d0d3b3facb2f3'
 
-# don't rename the dependency it is causing some strange compiler error:
-# https://github.com/rust-lang/rust/issues/64450
-[dependencies.srml-staking-reward-curve]
-package = 'srml-staking-reward-curve'
-git = 'https://github.com/paritytech/substrate.git'
+[dependencies.balances]
 default_features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'srml-balances'
 rev = '0e3001a1ad6fa3d1ba7da7342a8d0d3b3facb2f3'
 
+[dev-dependencies.runtime-io]
+default_features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'sr-io'
+rev = '0e3001a1ad6fa3d1ba7da7342a8d0d3b3facb2f3'
