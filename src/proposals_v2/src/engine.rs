@@ -28,6 +28,9 @@ pub trait Trait: system::Trait + timestamp::Trait {
 
     /// Origin from which votes must come.
     type VoteOrigin: EnsureOrigin<Self::Origin, Success = Self::AccountId>;
+
+    // Calculates quorum and vote threshold
+    //type QuorumProvider: QuorumProvider;
 }
 
 // Storage for the proposals module
@@ -46,10 +49,10 @@ decl_storage! {
         VotesByProposalId get(fn votes_by_proposal): map u32 => Vec<Vote<T::AccountId>>;
 
         /// Ids of proposals that are open for voting (have not been finalized yet).
-        ActiveProposalIds get(active_proposal_ids): Vec<u32> = vec![];
+        ActiveProposalIds get(fn active_proposal_ids): Vec<u32> = vec![];
 
         /// Proposal tally results map
-        TallyResults get(tally_results): map u32 => TallyResult<T::BlockNumber>;
+        pub TallyResults get(fn tally_results): map u32 => TallyResult<T::BlockNumber>;
     }
 }
 
@@ -57,7 +60,7 @@ decl_module! {
     /// 'Proposal engine' substrate module
     pub struct Module<T: Trait> for enum Call where origin: T::Origin {
         /// Vote extrinsic. Conditions:  origin must allow votes.
-        fn vote(origin, proposal_id: u32, vote: VoteKind) -> dispatch::Result {
+        pub fn vote(origin, proposal_id: u32, vote: VoteKind) -> dispatch::Result {
             let voter_id = T::VoteOrigin::ensure_origin(origin)?;
 
             Self::process_vote(voter_id, proposal_id, vote)
@@ -143,8 +146,8 @@ impl<T: Trait> Module<T> {
         };
     }
 
-    /// Get the voters for the current proposal.
-    pub fn tally() -> dispatch::Result {
+    /// Voting results tally
+    fn tally() -> dispatch::Result {
         let quorum: u32 = 1;
 
         for &proposal_id in Self::active_proposal_ids().iter() {
@@ -165,16 +168,7 @@ impl<T: Trait> Module<T> {
 
             let is_expired = proposal.is_voting_period_expired(Self::current_block());
 
-            // We need to check that the council is not empty because otherwise,
-            // if there is no votes on a proposal it will be counted as if
-            // all 100% (zero) councilors voted on the proposal and should be approved.
-
             let quorum_reached = quorum > 0 && approvals >= quorum;
-
-            // Don't approve a proposal right after quorum reached
-            // if not all councilors casted their votes.
-            // Instead let other councilors cast their vote
-            // up until the proposal's expired.
 
             let new_status: Option<ProposalStatus> = if quorum_reached {
                 Some(ProposalStatus::Approved)

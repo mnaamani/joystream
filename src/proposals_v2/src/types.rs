@@ -78,13 +78,14 @@ pub struct Proposal<BlockNumber, AccountId> {
     // Any stake associated with the proposal.
     //pub stake: Option<BalanceOf<T>>
 
-    //Stage: One among the following.
+    /// Current proposal status
     pub status: ProposalStatus,
 }
 
 impl<BlockNumber: Add<Output = BlockNumber> + PartialOrd + Copy, AccountId>
     Proposal<BlockNumber, AccountId>
 {
+    /// Returns whether voting period expired by now
     pub fn is_voting_period_expired(&self, now: BlockNumber) -> bool {
         now >= self.created + self.parameters.voting_period
     }

@@ -115,3 +115,4 @@ pub fn initial_test_ext() -> runtime_io::TestExternalities {
 
 pub type ProposalCodex = crate::codex::Module<Test>;
 pub type Proposals = crate::engine::Module<Test>;
+pub type System = system::Module<Test>;
