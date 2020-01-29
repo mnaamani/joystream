@@ -49,10 +49,10 @@ decl_storage! {
         VotesByProposalId get(fn votes_by_proposal): map u32 => Vec<Vote<T::AccountId>>;
 
         /// Ids of proposals that are open for voting (have not been finalized yet).
-        ActiveProposalIds get(fn active_proposal_ids): Vec<u32> = vec![];
+        pub(crate) ActiveProposalIds get(fn active_proposal_ids): Vec<u32> = vec![];
 
         /// Proposal tally results map
-        pub TallyResults get(fn tally_results): map u32 => TallyResult<T::BlockNumber>;
+        pub(crate) TallyResults get(fn tally_results): map u32 => TallyResult<T::BlockNumber>;
     }
 }
 
@@ -68,8 +68,21 @@ decl_module! {
 
         /// Block finalization. Perform voting period check and vote result tally.
         fn on_finalize(_n: T::BlockNumber) {
-            if let Err(e) = Self::tally() {
-                print(e);
+            let tally_results = Self::tally();
+
+            // mutation
+
+            for  tally_result in tally_results {
+                <TallyResults<T>>::insert(tally_result.proposal_id, &tally_result);
+
+                let update_proposal_result = Self::update_proposal_status(
+                    tally_result.proposal_id,
+                    tally_result.status
+                );
+
+                if let Err(e) = update_proposal_result {
+                    print(e);
+                }
             }
         }
     }
@@ -134,7 +147,6 @@ impl<T: Trait> Module<T> {
 
     // Executes approved proposal code
     fn execute_proposal(proposal_id: u32) {
-        //let origin = system::RawOrigin::None.into();
         let origin = system::RawOrigin::Root.into();
         let proposal = Self::proposal_codes(proposal_id);
 
@@ -146,59 +158,79 @@ impl<T: Trait> Module<T> {
         };
     }
 
-    /// Voting results tally
-    fn tally() -> dispatch::Result {
-        let quorum: u32 = 1;
-
+    /// Voting results tally.
+    /// Returns proposals with changed status and tally results
+    fn tally() -> Vec<TallyResult<T::BlockNumber>> {
+        let mut results = Vec::new();
         for &proposal_id in Self::active_proposal_ids().iter() {
             let votes = Self::votes_by_proposal(proposal_id);
             let proposal = Self::proposals(proposal_id);
 
-            let mut abstentions: u32 = 0;
-            let mut approvals: u32 = 0;
-            let mut rejections: u32 = 0;
-
-            for vote in votes.iter() {
-                match vote.vote_kind {
-                    VoteKind::Abstain => abstentions += 1,
-                    VoteKind::Approve => approvals += 1,
-                    VoteKind::Reject => rejections += 1,
-                }
-            }
-
-            let is_expired = proposal.is_voting_period_expired(Self::current_block());
-
-            let quorum_reached = quorum > 0 && approvals >= quorum;
-
-            let new_status: Option<ProposalStatus> = if quorum_reached {
-                Some(ProposalStatus::Approved)
-            } else {
-                if is_expired {
-                    // Proposal has been expired and quorum not reached.
-                    Some(ProposalStatus::Expired)
-                } else {
-                    None
-                }
-            };
-
-            // Some(ProposalStatus::Rejected)
-
-            // TODO move next block outside of tally to 'end_block'
-            if let Some(status) = new_status {
-                Self::update_proposal_status(proposal_id, status.clone())?;
-                let tally_result = TallyResult {
-                    proposal_id,
-                    abstentions,
-                    approvals,
-                    rejections,
-                    status,
-                    finalized_at: Self::current_block(),
-                };
-                <TallyResults<T>>::insert(proposal_id, &tally_result);
+            if let Some(tally_result) = Self::tally_results_for_proposal(
+                proposal_id,
+                proposal,
+                votes,
+                Self::current_block(),
+            ) {
+                results.push(tally_result);
             }
         }
 
-        Ok(())
+        results
+    }
+
+    /// Voting results tally for single proposal.
+    /// Returns tally results if proposal status will should change
+    fn tally_results_for_proposal(
+        proposal_id: u32,
+        proposal: Proposal<T::BlockNumber, T::AccountId>,
+        votes: Vec<Vote<T::AccountId>>,
+        now: T::BlockNumber,
+    ) -> Option<TallyResult<T::BlockNumber>> {
+        let mut abstentions: u32 = 0;
+        let mut approvals: u32 = 0;
+        let mut rejections: u32 = 0;
+
+        for vote in votes.iter() {
+            match vote.vote_kind {
+                VoteKind::Abstain => abstentions += 1,
+                VoteKind::Approve => approvals += 1,
+                VoteKind::Reject => rejections += 1,
+            }
+        }
+
+        let is_expired = proposal.is_voting_period_expired(now);
+
+        let votes_count = votes.len() as u32;
+
+        let all_voted = votes_count == proposal.parameters.temp_quorum_vote_count;
+
+        let quorum_reached = votes_count >= proposal.parameters.temp_quorum_vote_count
+            && approvals >= proposal.parameters.temp_quorum_vote_count;
+
+        let new_status: Option<ProposalStatus> = if quorum_reached {
+            Some(ProposalStatus::Approved)
+        } else if is_expired {
+            // Proposal has been expired and quorum not reached.
+            Some(ProposalStatus::Expired)
+        } else if all_voted {
+            Some(ProposalStatus::Rejected)
+        } else {
+            None
+        };
+
+        if let Some(status) = new_status {
+            Some(TallyResult {
+                proposal_id,
+                abstentions,
+                approvals,
+                rejections,
+                status,
+                finalized_at: now,
+            })
+        } else {
+            None
+        }
     }
 
     /// Updates proposal status and removes proposal from active ids.
@@ -216,12 +248,17 @@ impl<T: Trait> Module<T> {
             Err("MSG_PROPOSAL_STATUS_ALREADY_UPDATED")
         } else {
             let pid = proposal_id.clone();
+
+            let mut new_active_ids = other_active_ids;
             match new_status {
                 ProposalStatus::Rejected | ProposalStatus::Expired => Self::reject_proposal(pid)?,
                 ProposalStatus::Approved => Self::approve_proposal(pid)?,
-                ProposalStatus::Active => { /* nothing */ }
+                ProposalStatus::Active => {
+                    // return back active proposal id
+                    new_active_ids.push(pid);
+                }
             }
-            ActiveProposalIds::put(other_active_ids);
+            ActiveProposalIds::put(new_active_ids);
             <Proposals<T>>::mutate(proposal_id, |p| p.status = new_status.clone());
             Ok(())
         }

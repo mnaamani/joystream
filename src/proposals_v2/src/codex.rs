@@ -15,9 +15,7 @@ use system::ensure_root;
 pub trait Trait: system::Trait {}
 
 decl_storage! {
-    trait Store for Module<T: Trait> as ProposalCodex {
-        // Declare storage and getter functions here
-    }
+    trait Store for Module<T: Trait> as ProposalCodex {}
 }
 
 decl_module! {

@@ -60,6 +60,17 @@ impl Default for VoteKind {
 pub struct ProposalParameters<BlockNumber> {
     /// During this period, votes can be accepted
     pub voting_period: BlockNumber,
+
+    /// Temporary field which defines expected quorum votes count. Used by quorum calculation
+    /// Will be changed to percentage
+    pub temp_quorum_vote_count: u32,
+
+    //    /// Temporary field which defines expected threshold to pass the vote.
+    //    /// Will be changed to percentage
+    //    pub temp_threshold_vote_count: u32,
+    /// Temporary field which defines total expected votes count. Used by quorum calculation
+    /// Will be changed to some kind of votes manager
+    pub temp_total_vote_count: u32,
     //pub stake: BalanceOf<T>, //<T: GovernanceCurrency>
 }
 
@@ -75,9 +86,9 @@ pub struct Proposal<BlockNumber, AccountId> {
 
     /// When it was created.
     pub created: BlockNumber,
+
     // Any stake associated with the proposal.
     //pub stake: Option<BalanceOf<T>>
-
     /// Current proposal status
     pub status: ProposalStatus,
 }
