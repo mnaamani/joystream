@@ -1,8 +1,8 @@
 [package]
-authors = ['Joystream']
+name = 'substrate-proposals-module'
+version = '2.0.0'
+authors = ['Joystream contributors']
 edition = '2018'
-name = 'joystream-proposals-v2-module'
-version = '7.0.0'
 
 [features]
 default = ['std']
