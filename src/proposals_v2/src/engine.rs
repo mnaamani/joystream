@@ -166,71 +166,14 @@ impl<T: Trait> Module<T> {
             let votes = Self::votes_by_proposal(proposal_id);
             let proposal = Self::proposals(proposal_id);
 
-            if let Some(tally_result) = Self::tally_results_for_proposal(
-                proposal_id,
-                proposal,
-                votes,
-                Self::current_block(),
-            ) {
+            if let Some(tally_result) =
+                proposal.tally_results(proposal_id, votes, Self::current_block())
+            {
                 results.push(tally_result);
             }
         }
 
         results
-    }
-
-    /// Voting results tally for single proposal.
-    /// Returns tally results if proposal status will should change
-    fn tally_results_for_proposal(
-        proposal_id: u32,
-        proposal: Proposal<T::BlockNumber, T::AccountId>,
-        votes: Vec<Vote<T::AccountId>>,
-        now: T::BlockNumber,
-    ) -> Option<TallyResult<T::BlockNumber>> {
-        let mut abstentions: u32 = 0;
-        let mut approvals: u32 = 0;
-        let mut rejections: u32 = 0;
-
-        for vote in votes.iter() {
-            match vote.vote_kind {
-                VoteKind::Abstain => abstentions += 1,
-                VoteKind::Approve => approvals += 1,
-                VoteKind::Reject => rejections += 1,
-            }
-        }
-
-        let is_expired = proposal.is_voting_period_expired(now);
-
-        let votes_count = votes.len() as u32;
-
-        let all_voted = votes_count == proposal.parameters.temp_quorum_vote_count;
-
-        let quorum_reached = votes_count >= proposal.parameters.temp_quorum_vote_count
-            && approvals >= proposal.parameters.temp_quorum_vote_count;
-
-        let new_status: Option<ProposalStatus> = if quorum_reached {
-            Some(ProposalStatus::Approved)
-        } else if is_expired {
-            // Proposal has been expired and quorum not reached.
-            Some(ProposalStatus::Expired)
-        } else if all_voted {
-            Some(ProposalStatus::Rejected)
-        } else {
-            None
-        };
-
-        if let Some(status) = new_status {
-            Some(TallyResult {
-                proposal_id,
-                abstentions,
-                approvals,
-                rejections,
-                status,
-                finalized_at: now,
-            })
-        } else {
-            None
-        }
     }
 
     /// Updates proposal status and removes proposal from active ids.

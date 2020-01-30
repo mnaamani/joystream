@@ -100,6 +100,60 @@ impl<BlockNumber: Add<Output = BlockNumber> + PartialOrd + Copy, AccountId>
     pub fn is_voting_period_expired(&self, now: BlockNumber) -> bool {
         now >= self.created + self.parameters.voting_period
     }
+
+    /// Voting results tally for single proposal.
+    /// Parameters: own proposal id, current time, votes.
+    /// Returns tally results if proposal status will should change
+    pub fn tally_results(
+        self,
+        proposal_id: u32,
+        votes: Vec<Vote<AccountId>>,
+        now: BlockNumber,
+    ) -> Option<TallyResult<BlockNumber>> {
+        let mut abstentions: u32 = 0;
+        let mut approvals: u32 = 0;
+        let mut rejections: u32 = 0;
+
+        for vote in votes.iter() {
+            match vote.vote_kind {
+                VoteKind::Abstain => abstentions += 1,
+                VoteKind::Approve => approvals += 1,
+                VoteKind::Reject => rejections += 1,
+            }
+        }
+
+        let is_expired = self.is_voting_period_expired(now);
+
+        let votes_count = votes.len() as u32;
+        let all_voted = votes_count == self.parameters.temp_total_vote_count;
+
+        let quorum_reached = votes_count >= self.parameters.temp_quorum_vote_count
+            && approvals >= self.parameters.temp_quorum_vote_count;
+
+        let new_status: Option<ProposalStatus> = if quorum_reached {
+            Some(ProposalStatus::Approved)
+        } else if is_expired {
+            // Proposal has been expired and quorum not reached.
+            Some(ProposalStatus::Expired)
+        } else if all_voted {
+            Some(ProposalStatus::Rejected)
+        } else {
+            None
+        };
+
+        if let Some(status) = new_status {
+            Some(TallyResult {
+                proposal_id,
+                abstentions,
+                approvals,
+                rejections,
+                status,
+                finalized_at: now,
+            })
+        } else {
+            None
+        }
+    }
 }
 
 /// Vote. Characterized by voter and vote kind.
@@ -134,4 +188,169 @@ pub struct TallyResult<BlockNumber> {
 
     /// Proposal finalization block number
     pub finalized_at: BlockNumber,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::*;
+
+    #[test]
+    fn proposal_voting_period_expired() {
+        let mut proposal = Proposal::<u64, u64>::default();
+
+        proposal.created = 1;
+        proposal.parameters.voting_period = 3;
+
+        assert!(proposal.is_voting_period_expired(4));
+    }
+
+    #[test]
+    fn proposal_voting_period_not_expired() {
+        let mut proposal = Proposal::<u64, u64>::default();
+
+        proposal.created = 1;
+        proposal.parameters.voting_period = 3;
+
+        assert!(!proposal.is_voting_period_expired(3));
+    }
+
+    #[test]
+    fn tally_results_proposal_expired() {
+        let mut proposal = Proposal::<u64, u64>::default();
+        let proposal_id = 1;
+        let now = 5;
+        proposal.created = 1;
+        proposal.parameters.voting_period = 3;
+        proposal.parameters.temp_quorum_vote_count = 3;
+        proposal.parameters.temp_total_vote_count = 5;
+
+        let votes = vec![
+            Vote {
+                voter_id: 1,
+                vote_kind: VoteKind::Approve,
+            },
+            Vote {
+                voter_id: 2,
+                vote_kind: VoteKind::Approve,
+            },
+            Vote {
+                voter_id: 4,
+                vote_kind: VoteKind::Reject,
+            },
+        ];
+
+        let expected_tally_results = TallyResult {
+            proposal_id,
+            abstentions: 0,
+            approvals: 2,
+            rejections: 1,
+            status: ProposalStatus::Expired,
+            finalized_at: now
+        };
+
+        assert_eq!(proposal.tally_results(proposal_id, votes, now), Some(expected_tally_results));
+    }
+    #[test]
+    fn tally_results_proposal_approved() {
+        let mut proposal = Proposal::<u64, u64>::default();
+        let proposal_id = 1;
+        proposal.created = 1;
+        proposal.parameters.voting_period = 3;
+        proposal.parameters.temp_quorum_vote_count = 3;
+        proposal.parameters.temp_total_vote_count = 5;
+
+        let votes = vec![
+            Vote {
+                voter_id: 1,
+                vote_kind: VoteKind::Approve,
+            },
+            Vote {
+                voter_id: 2,
+                vote_kind: VoteKind::Approve,
+            },
+            Vote {
+                voter_id: 3,
+                vote_kind: VoteKind::Approve,
+            },
+            Vote {
+                voter_id: 4,
+                vote_kind: VoteKind::Reject,
+            },
+        ];
+
+        let expected_tally_results = TallyResult {
+            proposal_id,
+            abstentions: 0,
+            approvals: 3,
+            rejections: 1,
+            status: ProposalStatus::Approved,
+            finalized_at: 2
+        };
+
+        assert_eq!(proposal.tally_results(proposal_id, votes, 2), Some(expected_tally_results));
+    }
+
+    #[test]
+    fn tally_results_proposal_rejected() {
+        let mut proposal = Proposal::<u64, u64>::default();
+        let proposal_id = 1;
+        let now = 2;
+
+        proposal.created = 1;
+        proposal.parameters.voting_period = 3;
+        proposal.parameters.temp_quorum_vote_count = 3;
+        proposal.parameters.temp_total_vote_count = 4;
+
+        let votes = vec![
+            Vote {
+                voter_id: 1,
+                vote_kind: VoteKind::Reject,
+            },
+            Vote {
+                voter_id: 2,
+                vote_kind: VoteKind::Reject,
+            },
+            Vote {
+                voter_id: 3,
+                vote_kind: VoteKind::Abstain,
+            },
+            Vote {
+                voter_id: 4,
+                vote_kind: VoteKind::Approve,
+            },
+        ];
+
+        let expected_tally_results = TallyResult {
+            proposal_id,
+            abstentions: 1,
+            approvals: 1,
+            rejections: 2,
+            status: ProposalStatus::Rejected,
+            finalized_at: now
+        };
+
+        assert_eq!(proposal.tally_results(proposal_id, votes, now), Some(expected_tally_results));
+    }
+
+   #[test]
+    fn tally_results_are_empty_with_not_expired_voting_period() {
+        let mut proposal = Proposal::<u64, u64>::default();
+        let proposal_id = 1;
+        let now = 2;
+
+        proposal.created = 1;
+        proposal.parameters.voting_period = 3;
+        proposal.parameters.temp_quorum_vote_count = 3;
+        proposal.parameters.temp_total_vote_count = 4;
+
+        let votes = vec![
+            Vote {
+                voter_id: 1,
+                vote_kind: VoteKind::Abstain,
+            },
+        ];
+
+
+        assert_eq!(proposal.tally_results(proposal_id, votes, now), None);
+    }
 }

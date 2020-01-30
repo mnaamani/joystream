@@ -221,7 +221,7 @@ fn rejected_tally_results_and_remove_proposal_id_from_active_succeeds() {
 
         let parameters = ProposalParameters {
             voting_period: 3,
-            temp_total_vote_count: 4,
+            temp_total_vote_count: 1,
             temp_quorum_vote_count: 1,
         };
         let proposal_id = Proposals::create_proposal(
