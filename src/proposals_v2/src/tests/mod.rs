@@ -28,9 +28,9 @@ fn run_to_block_and_finalize(n: u64) {
 #[test]
 fn create_text_proposal_succeeds() {
     initial_test_ext().execute_with(|| {
-        let origin = system::RawOrigin::Root.into();
+        let origin = system::RawOrigin::Signed(1).into();
 
-        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::create_text_proposal(
+        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::text_proposal(
             b"title".to_vec(),
             b"body".to_vec(),
         ));
@@ -41,16 +41,16 @@ fn create_text_proposal_succeeds() {
             temp_quorum_vote_count: 1,
         };
 
-        let _proposals_id =
-            Proposals::create_proposal(origin, 1, parameters, Box::new(text_proposal_call))
-                .unwrap();
+        assert!(
+            Proposals::create_proposal(origin, parameters, Box::new(text_proposal_call)).is_ok()
+        );
     });
 }
 
 #[test]
 fn create_text_proposal_fails_with_insufficient_rights() {
     initial_test_ext().execute_with(|| {
-        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::create_text_proposal(
+        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::text_proposal(
             b"title".to_vec(),
             b"body".to_vec(),
         ));
@@ -62,8 +62,8 @@ fn create_text_proposal_fails_with_insufficient_rights() {
             temp_quorum_vote_count: 1,
         };
         assert_eq!(
-            Proposals::create_proposal(origin, 1, parameters, Box::new(text_proposal_call)),
-            Err(CreateProposalError {})
+            Proposals::create_proposal(origin, parameters, Box::new(text_proposal_call)),
+            Err("Invalid origin")
         );
     });
 }
@@ -71,7 +71,7 @@ fn create_text_proposal_fails_with_insufficient_rights() {
 #[test]
 fn vote_succeeds() {
     initial_test_ext().execute_with(|| {
-        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::create_text_proposal(
+        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::text_proposal(
             b"title".to_vec(),
             b"body".to_vec(),
         ));
@@ -81,13 +81,14 @@ fn vote_succeeds() {
             temp_total_vote_count: 4,
             temp_quorum_vote_count: 1,
         };
-        let proposals_id = Proposals::create_proposal(
-            system::RawOrigin::Root.into(),
-            1,
-            parameters,
-            Box::new(text_proposal_call),
-        )
-        .unwrap();
+
+        let origin = system::RawOrigin::Signed(1).into();
+        assert!(
+            Proposals::create_proposal(origin, parameters, Box::new(text_proposal_call)).is_ok()
+        );
+
+        // last created proposal id equals current proposal count
+        let proposals_id = <ProposalCount>::get();
 
         assert_eq!(
             Proposals::vote(
@@ -110,10 +111,11 @@ fn vote_fails_with_insufficient_rights() {
     });
 }
 
+
 #[test]
 fn proposal_execution_succeeds() {
     initial_test_ext().execute_with(|| {
-        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::create_text_proposal(
+        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::text_proposal(
             b"title".to_vec(),
             b"body".to_vec(),
         ));
@@ -123,13 +125,14 @@ fn proposal_execution_succeeds() {
             temp_total_vote_count: 4,
             temp_quorum_vote_count: 1,
         };
-        let proposals_id = Proposals::create_proposal(
-            system::RawOrigin::Root.into(),
-            1,
-            parameters,
-            Box::new(text_proposal_call),
-        )
-        .unwrap();
+
+        let origin = system::RawOrigin::Signed(1).into();
+        assert!(
+            Proposals::create_proposal(origin, parameters, Box::new(text_proposal_call)).is_ok()
+        );
+
+        // last created proposal id equals current proposal count
+        let proposals_id = <ProposalCount>::get();
 
         assert_eq!(
             Proposals::vote(
@@ -147,7 +150,7 @@ fn proposal_execution_succeeds() {
 #[test]
 fn tally_calculation_succeeds() {
     initial_test_ext().execute_with(|| {
-        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::create_text_proposal(
+        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::text_proposal(
             b"title".to_vec(),
             b"body".to_vec(),
         ));
@@ -157,13 +160,14 @@ fn tally_calculation_succeeds() {
             temp_total_vote_count: 4,
             temp_quorum_vote_count: 1,
         };
-        let proposals_id = Proposals::create_proposal(
-            system::RawOrigin::Root.into(),
-            1,
-            parameters,
-            Box::new(text_proposal_call),
-        )
-        .unwrap();
+
+        let origin = system::RawOrigin::Signed(1).into();
+        assert!(
+            Proposals::create_proposal(origin, parameters, Box::new(text_proposal_call)).is_ok()
+        );
+
+        // last created proposal id equals current proposal count
+        let proposals_id = <ProposalCount>::get();
 
         assert!(Proposals::vote(
             system::RawOrigin::Signed(1).into(),
@@ -214,7 +218,7 @@ fn tally_calculation_succeeds() {
 #[test]
 fn rejected_tally_results_and_remove_proposal_id_from_active_succeeds() {
     initial_test_ext().execute_with(|| {
-        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::create_text_proposal(
+        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::text_proposal(
             b"title".to_vec(),
             b"body".to_vec(),
         ));
@@ -224,13 +228,14 @@ fn rejected_tally_results_and_remove_proposal_id_from_active_succeeds() {
             temp_total_vote_count: 1,
             temp_quorum_vote_count: 1,
         };
-        let proposal_id = Proposals::create_proposal(
-            system::RawOrigin::Root.into(),
-            1,
-            parameters,
-            Box::new(text_proposal_call),
-        )
-        .unwrap();
+
+        let origin = system::RawOrigin::Signed(1).into();
+        assert!(
+            Proposals::create_proposal(origin, parameters, Box::new(text_proposal_call)).is_ok()
+        );
+
+        // last created proposal id equals current proposal count
+        let proposal_id = <ProposalCount>::get();
 
         assert_eq!(
             Proposals::vote(

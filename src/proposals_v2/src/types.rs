@@ -245,10 +245,13 @@ mod tests {
             approvals: 2,
             rejections: 1,
             status: ProposalStatus::Expired,
-            finalized_at: now
+            finalized_at: now,
         };
 
-        assert_eq!(proposal.tally_results(proposal_id, votes, now), Some(expected_tally_results));
+        assert_eq!(
+            proposal.tally_results(proposal_id, votes, now),
+            Some(expected_tally_results)
+        );
     }
     #[test]
     fn tally_results_proposal_approved() {
@@ -284,10 +287,13 @@ mod tests {
             approvals: 3,
             rejections: 1,
             status: ProposalStatus::Approved,
-            finalized_at: 2
+            finalized_at: 2,
         };
 
-        assert_eq!(proposal.tally_results(proposal_id, votes, 2), Some(expected_tally_results));
+        assert_eq!(
+            proposal.tally_results(proposal_id, votes, 2),
+            Some(expected_tally_results)
+        );
     }
 
     #[test]
@@ -326,13 +332,16 @@ mod tests {
             approvals: 1,
             rejections: 2,
             status: ProposalStatus::Rejected,
-            finalized_at: now
+            finalized_at: now,
         };
 
-        assert_eq!(proposal.tally_results(proposal_id, votes, now), Some(expected_tally_results));
+        assert_eq!(
+            proposal.tally_results(proposal_id, votes, now),
+            Some(expected_tally_results)
+        );
     }
 
-   #[test]
+    #[test]
     fn tally_results_are_empty_with_not_expired_voting_period() {
         let mut proposal = Proposal::<u64, u64>::default();
         let proposal_id = 1;
@@ -343,13 +352,10 @@ mod tests {
         proposal.parameters.temp_quorum_vote_count = 3;
         proposal.parameters.temp_total_vote_count = 4;
 
-        let votes = vec![
-            Vote {
-                voter_id: 1,
-                vote_kind: VoteKind::Abstain,
-            },
-        ];
-
+        let votes = vec![Vote {
+            voter_id: 1,
+            vote_kind: VoteKind::Abstain,
+        }];
 
         assert_eq!(proposal.tally_results(proposal_id, votes, now), None);
     }

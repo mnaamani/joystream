@@ -24,7 +24,7 @@ pub trait Trait: system::Trait + timestamp::Trait {
     type ProposalCode: Parameter + Dispatchable<Origin = Self::Origin> + Default;
 
     /// Origin from which proposals must come.
-    type ProposalOrigin: EnsureOrigin<Self::Origin, Success = ()>;
+    type ProposalOrigin: EnsureOrigin<Self::Origin, Success = Self::AccountId>;
 
     /// Origin from which votes must come.
     type VoteOrigin: EnsureOrigin<Self::Origin, Success = Self::AccountId>;
@@ -40,7 +40,7 @@ decl_storage! {
         Proposals get(fn proposals): map u32 => Proposal<T::BlockNumber, T::AccountId>;
 
         /// Count of all proposals that have been created.
-        ProposalCount get(fn proposal_count): u32;
+        pub ProposalCount get(fn proposal_count): u32;
 
         /// Map proposal executable code by proposal id.
         ProposalCode get(fn proposal_codes): map u32 =>  T::ProposalCode;
@@ -49,7 +49,7 @@ decl_storage! {
         VotesByProposalId get(fn votes_by_proposal): map u32 => Vec<Vote<T::AccountId>>;
 
         /// Ids of proposals that are open for voting (have not been finalized yet).
-        pub(crate) ActiveProposalIds get(fn active_proposal_ids): Vec<u32> = vec![];
+        pub ActiveProposalIds get(fn active_proposal_ids): Vec<u32> = vec![];
 
         /// Proposal tally results map
         pub(crate) TallyResults get(fn tally_results): map u32 => TallyResult<T::BlockNumber>;
@@ -59,6 +59,31 @@ decl_storage! {
 decl_module! {
     /// 'Proposal engine' substrate module
     pub struct Module<T: Trait> for enum Call where origin: T::Origin {
+        // TODO: introduce own error types
+        /// Create proposal. Requires root permissions.
+        pub fn create_proposal(
+            origin,
+            parameters: ProposalParameters<T::BlockNumber>,
+            proposal_code: Box<T::ProposalCode>,){
+            let proposer_id = T::ProposalOrigin::ensure_origin(origin)?;
+
+            let next_proposal_count_value = Self::proposal_count() + 1;
+            let new_proposal_id = next_proposal_count_value;
+
+            let new_proposal = Proposal {
+                created: Self::current_block(),
+                parameters,
+                proposer_id,
+                status: ProposalStatus::Active,
+            };
+
+            // mutation
+            <Proposals<T>>::insert(new_proposal_id, new_proposal);
+            <ProposalCode<T>>::insert(new_proposal_id, proposal_code);
+            ActiveProposalIds::mutate(|ids| ids.push(new_proposal_id));
+            ProposalCount::put(next_proposal_count_value);
+        }
+
         /// Vote extrinsic. Conditions:  origin must allow votes.
         pub fn vote(origin, proposal_id: u32, vote: VoteKind) -> dispatch::Result {
             let voter_id = T::VoteOrigin::ensure_origin(origin)?;
@@ -85,41 +110,6 @@ decl_module! {
                 }
             }
         }
-    }
-}
-
-/// Defines an error during 'create_proposal' invocation
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct CreateProposalError {}
-
-impl<T: Trait> Module<T> {
-    // TODO: introduce own error types
-    /// Create proposal. Requires root permissions.
-    pub fn create_proposal(
-        origin: T::Origin,
-        proposer_id: T::AccountId,
-        parameters: ProposalParameters<T::BlockNumber>,
-        proposal_code: Box<T::ProposalCode>,
-    ) -> Result<u32, CreateProposalError> {
-        T::ProposalOrigin::ensure_origin(origin).map_err(|_| CreateProposalError {})?;
-
-        let next_proposal_count_value = Self::proposal_count() + 1;
-        let new_proposal_id = next_proposal_count_value;
-
-        let new_proposal = Proposal {
-            created: Self::current_block(),
-            parameters,
-            proposer_id,
-            status: ProposalStatus::Active,
-        };
-
-        // mutation
-        <Proposals<T>>::insert(new_proposal_id, new_proposal);
-        <ProposalCode<T>>::insert(new_proposal_id, proposal_code);
-        ActiveProposalIds::mutate(|ids| ids.push(new_proposal_id));
-        ProposalCount::put(next_proposal_count_value);
-
-        Ok(new_proposal_id)
     }
 }
 

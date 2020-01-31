@@ -22,7 +22,7 @@ decl_module! {
     /// 'Proposal codex' substrate module
     pub struct Module<T: Trait> for enum Call where origin: T::Origin {
         /// Text signal proposal type. On approval prints its content.
-        fn create_text_proposal(origin, title: Vec<u8>, body: Vec<u8>) {
+        fn text_proposal(origin, title: Vec<u8>, body: Vec<u8>) {
             ensure_root(origin)?;
 
             print("Proposal: ");
