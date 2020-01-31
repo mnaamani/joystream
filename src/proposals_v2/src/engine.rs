@@ -3,10 +3,27 @@
 //!
 //! Supported extrinsics:
 //! - vote
-//!
-//! Public API:
 //! - create_proposal
-
+//!
+//! Should be added to the runtime along with Default implementation for Call:
+//!
+//!
+//! ```
+//! impl Default for Call {
+//!     fn default() -> Self {
+//!       panic!("shouldn't call default for Call");
+//!     }
+//! }
+//!
+//! impl proposals_v2::engine::Trait for Runtime {
+//!    type ProposalCode = Call;
+//!
+//!    type ProposalOrigin = system::EnsureRoot<Self::AccountId>;
+//!
+//!    type VoteOrigin = system::EnsureSigned<Self::AccountId>;
+//! }
+//! ```
+//!
 use rstd::boxed::Box;
 use rstd::fmt::Debug;
 use rstd::prelude::*;

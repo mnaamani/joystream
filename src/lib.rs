@@ -276,6 +276,23 @@ impl transaction_payment::Trait for Runtime {
     type FeeMultiplierUpdate = (); // FeeMultiplierUpdateHandler;
 }
 
+impl Default for Call {
+    fn default() -> Self {
+        panic!("shouldn't call default for Call");
+    }
+}
+
+impl proposals_v2::engine::Trait for Runtime {
+    type ProposalCode = Call;
+
+    type ProposalOrigin = system::EnsureRoot<Self::AccountId>;
+
+    type VoteOrigin = system::EnsureSigned<Self::AccountId>;
+}
+
+impl proposals_v2::codex::Trait for Runtime {}
+
+
 impl sudo::Trait for Runtime {
     type Event = Event;
     type Proposal = Call;
@@ -417,6 +434,8 @@ use recurringrewards;
 use roles::actors;
 use service_discovery::discovery;
 use stake;
+
+use proposals_v2::{ codex};
 
 /// Alias for ContentId, used in various places.
 pub type ContentId = primitives::H256;
@@ -765,6 +784,7 @@ construct_runtime!(
         Sudo: sudo,
         // Joystream
         Proposals: proposals::{Module, Call, Storage, Event<T>, Config<T>},
+        Proposals2: codex::{Module, Call, Storage},
         CouncilElection: election::{Module, Call, Storage, Event<T>, Config<T>},
         Council: council::{Module, Call, Storage, Event<T>, Config<T>},
         Memo: memo::{Module, Call, Storage, Event<T>},
