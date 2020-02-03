@@ -54,7 +54,7 @@ impl crate::engine::Trait for Test {
 
 impl VotersParameters for () {
     fn total_voters_count() -> u32 {
-        3
+        4
     }
 }
 

@@ -37,7 +37,7 @@ fn create_text_proposal_succeeds() {
 
         let parameters = ProposalParameters {
             voting_period: 3,
-            temp_quorum_vote_count: 1,
+            approval_quorum_percentage : 60,
         };
 
         assert!(
@@ -57,7 +57,7 @@ fn create_text_proposal_fails_with_insufficient_rights() {
         let origin = system::RawOrigin::None.into();
         let parameters = ProposalParameters {
             voting_period: 3,
-            temp_quorum_vote_count: 1,
+            approval_quorum_percentage : 60,
         };
         assert_eq!(
             Proposals::create_proposal(origin, parameters, Box::new(text_proposal_call)),
@@ -76,7 +76,7 @@ fn vote_succeeds() {
 
         let parameters = ProposalParameters {
             voting_period: 3,
-            temp_quorum_vote_count: 1,
+            approval_quorum_percentage : 60,
         };
 
         let origin = system::RawOrigin::Signed(1).into();
@@ -118,7 +118,7 @@ fn proposal_execution_succeeds() {
 
         let parameters = ProposalParameters {
             voting_period: 3,
-            temp_quorum_vote_count: 1,
+            approval_quorum_percentage : 60,
         };
 
         let origin = system::RawOrigin::Signed(1).into();
@@ -152,7 +152,7 @@ fn tally_calculation_succeeds() {
 
         let parameters = ProposalParameters {
             voting_period: 3,
-            temp_quorum_vote_count: 1,
+            approval_quorum_percentage : 49,
         };
 
         let origin = system::RawOrigin::Signed(1).into();
@@ -219,7 +219,7 @@ fn rejected_tally_results_and_remove_proposal_id_from_active_succeeds() {
 
         let parameters = ProposalParameters {
             voting_period: 3,
-            temp_quorum_vote_count: 1,
+            approval_quorum_percentage : 60,
         };
 
         let origin = system::RawOrigin::Signed(1).into();
@@ -252,7 +252,15 @@ fn rejected_tally_results_and_remove_proposal_id_from_active_succeeds() {
             Proposals::vote(
                 system::RawOrigin::Signed(3).into(),
                 proposal_id,
-                VoteKind::Reject
+                VoteKind::Abstain
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            Proposals::vote(
+                system::RawOrigin::Signed(4).into(),
+                proposal_id,
+                VoteKind::Abstain
             ),
             Ok(())
         );
@@ -268,9 +276,9 @@ fn rejected_tally_results_and_remove_proposal_id_from_active_succeeds() {
             tally_result,
             TallyResult {
                 proposal_id,
-                abstentions: 0,
+                abstentions: 2,
                 approvals: 0,
-                rejections: 3,
+                rejections: 2,
                 status: ProposalStatus::Rejected,
                 finalized_at: 1
             }

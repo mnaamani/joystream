@@ -61,10 +61,8 @@ pub struct ProposalParameters<BlockNumber> {
     /// During this period, votes can be accepted
     pub voting_period: BlockNumber,
 
-    /// Temporary field which defines expected quorum votes count. Used by quorum calculation
-    /// Will be changed to percentage
-    pub temp_quorum_vote_count: u32,
-
+    /// Quorum percentage of approving voters required to pass a proposal.
+    pub approval_quorum_percentage: u32,
     //    /// Temporary field which defines expected threshold to pass the vote.
     //    /// Will be changed to percentage
     //    pub temp_threshold_vote_count: u32,
@@ -129,15 +127,16 @@ impl<BlockNumber: Add<Output = BlockNumber> + PartialOrd + Copy, AccountId>
             total_voters_count,
         };
 
-        let new_status: Option<ProposalStatus> = if proposal_status_decision.is_quorum_reached() {
-            Some(ProposalStatus::Approved)
-        } else if proposal_status_decision.is_expired() {
-            Some(ProposalStatus::Expired)
-        } else if proposal_status_decision.is_voting_completed() {
-            Some(ProposalStatus::Rejected)
-        } else {
-            None
-        };
+        let new_status: Option<ProposalStatus> =
+            if proposal_status_decision.is_approval_quorum_reached() {
+                Some(ProposalStatus::Approved)
+            } else if proposal_status_decision.is_expired() {
+                Some(ProposalStatus::Expired)
+            } else if proposal_status_decision.is_voting_completed() {
+                Some(ProposalStatus::Rejected)
+            } else {
+                None
+            };
 
         if let Some(status) = new_status {
             Some(TallyResult {
@@ -213,9 +212,13 @@ where
     }
 
     // Approval quorum reached for the proposal
-    pub fn is_quorum_reached(&self) -> bool {
-        self.votes_count >= self.proposal.parameters.temp_quorum_vote_count
-            && self.approvals >= self.proposal.parameters.temp_quorum_vote_count
+    pub fn is_approval_quorum_reached(&self) -> bool {
+        let approval_votes_fraction: f32 = self.approvals as f32 / self.total_voters_count as f32;
+
+        let approval_quorum_fraction =
+            self.proposal.parameters.approval_quorum_percentage as f32 / 100.0;
+
+        approval_votes_fraction >= approval_quorum_fraction
     }
 
     // All voters had voted
@@ -255,7 +258,7 @@ mod tests {
         let now = 5;
         proposal.created = 1;
         proposal.parameters.voting_period = 3;
-        proposal.parameters.temp_quorum_vote_count = 3;
+        proposal.parameters.approval_quorum_percentage = 60;
 
         let votes = vec![
             Vote {
@@ -292,6 +295,7 @@ mod tests {
         let proposal_id = 1;
         proposal.created = 1;
         proposal.parameters.voting_period = 3;
+        proposal.parameters.approval_quorum_percentage = 60;
 
         let votes = vec![
             Vote {
@@ -335,7 +339,7 @@ mod tests {
 
         proposal.created = 1;
         proposal.parameters.voting_period = 3;
-        proposal.parameters.temp_quorum_vote_count = 3;
+        proposal.parameters.approval_quorum_percentage = 60;
 
         let votes = vec![
             Vote {
@@ -379,7 +383,7 @@ mod tests {
 
         proposal.created = 1;
         proposal.parameters.voting_period = 3;
-        proposal.parameters.temp_quorum_vote_count = 3;
+        proposal.parameters.approval_quorum_percentage = 60;
 
         let votes = vec![Vote {
             voter_id: 1,
