@@ -10,6 +10,7 @@ pub use runtime_primitives::{
     BuildStorage, Perbill,
 };
 
+use crate::VotersParameters;
 use srml_support::{impl_outer_dispatch, impl_outer_origin, parameter_types};
 
 impl_outer_origin! {
@@ -47,6 +48,14 @@ impl crate::engine::Trait for Test {
     type ProposalOrigin = system::EnsureSigned<Self::AccountId>;
 
     type VoteOrigin = system::EnsureSigned<Self::AccountId>;
+
+    type TotalVotersCounter = ();
+}
+
+impl VotersParameters for () {
+    fn total_voters_count() -> u32 {
+        3
+    }
 }
 
 impl crate::codex::Trait for Test {}

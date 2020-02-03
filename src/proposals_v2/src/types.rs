@@ -68,9 +68,7 @@ pub struct ProposalParameters<BlockNumber> {
     //    /// Temporary field which defines expected threshold to pass the vote.
     //    /// Will be changed to percentage
     //    pub temp_threshold_vote_count: u32,
-    /// Temporary field which defines total expected votes count. Used by quorum calculation
-    /// Will be changed to some kind of votes manager
-    pub temp_total_vote_count: u32,
+
     //pub stake: BalanceOf<T>, //<T: GovernanceCurrency>
 }
 
@@ -108,6 +106,7 @@ impl<BlockNumber: Add<Output = BlockNumber> + PartialOrd + Copy, AccountId>
         self,
         proposal_id: u32,
         votes: Vec<Vote<AccountId>>,
+        total_voters_count: u32,
         now: BlockNumber,
     ) -> Option<TallyResult<BlockNumber>> {
         let mut abstentions: u32 = 0;
@@ -122,20 +121,19 @@ impl<BlockNumber: Add<Output = BlockNumber> + PartialOrd + Copy, AccountId>
             }
         }
 
-        let is_expired = self.is_voting_period_expired(now);
+        let proposal_status_decision = ProposalStatusDecision {
+            proposal: &self,
+            approvals,
+            now,
+            votes_count: votes.len() as u32,
+            total_voters_count,
+        };
 
-        let votes_count = votes.len() as u32;
-        let all_voted = votes_count == self.parameters.temp_total_vote_count;
-
-        let quorum_reached = votes_count >= self.parameters.temp_quorum_vote_count
-            && approvals >= self.parameters.temp_quorum_vote_count;
-
-        let new_status: Option<ProposalStatus> = if quorum_reached {
+        let new_status: Option<ProposalStatus> = if proposal_status_decision.is_quorum_reached() {
             Some(ProposalStatus::Approved)
-        } else if is_expired {
-            // Proposal has been expired and quorum not reached.
+        } else if proposal_status_decision.is_expired() {
             Some(ProposalStatus::Expired)
-        } else if all_voted {
+        } else if proposal_status_decision.is_voting_completed() {
             Some(ProposalStatus::Rejected)
         } else {
             None
@@ -190,6 +188,42 @@ pub struct TallyResult<BlockNumber> {
     pub finalized_at: BlockNumber,
 }
 
+/// Provides data for voting.
+pub trait VotersParameters {
+    /// Defines maximum voters count for the proposal
+    fn total_voters_count() -> u32;
+}
+
+// Calculates quorum, votes threshold, expiration status
+struct ProposalStatusDecision<'a, BlockNumber, AccountId> {
+    proposal: &'a Proposal<BlockNumber, AccountId>,
+    now: BlockNumber,
+    votes_count: u32,
+    total_voters_count: u32,
+    approvals: u32,
+}
+
+impl<'a, BlockNumber, AccountId> ProposalStatusDecision<'a, BlockNumber, AccountId>
+where
+    BlockNumber: Add<Output = BlockNumber> + PartialOrd + Copy,
+{
+    // Proposal has been expired and quorum not reached.
+    pub fn is_expired(&self) -> bool {
+        self.proposal.is_voting_period_expired(self.now)
+    }
+
+    // Approval quorum reached for the proposal
+    pub fn is_quorum_reached(&self) -> bool {
+        self.votes_count >= self.proposal.parameters.temp_quorum_vote_count
+            && self.approvals >= self.proposal.parameters.temp_quorum_vote_count
+    }
+
+    // All voters had voted
+    pub fn is_voting_completed(&self) -> bool {
+        self.votes_count == self.total_voters_count
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::*;
@@ -222,7 +256,6 @@ mod tests {
         proposal.created = 1;
         proposal.parameters.voting_period = 3;
         proposal.parameters.temp_quorum_vote_count = 3;
-        proposal.parameters.temp_total_vote_count = 5;
 
         let votes = vec![
             Vote {
@@ -249,7 +282,7 @@ mod tests {
         };
 
         assert_eq!(
-            proposal.tally_results(proposal_id, votes, now),
+            proposal.tally_results(proposal_id, votes, 5, now),
             Some(expected_tally_results)
         );
     }
@@ -259,8 +292,6 @@ mod tests {
         let proposal_id = 1;
         proposal.created = 1;
         proposal.parameters.voting_period = 3;
-        proposal.parameters.temp_quorum_vote_count = 3;
-        proposal.parameters.temp_total_vote_count = 5;
 
         let votes = vec![
             Vote {
@@ -291,7 +322,7 @@ mod tests {
         };
 
         assert_eq!(
-            proposal.tally_results(proposal_id, votes, 2),
+            proposal.tally_results(proposal_id, votes, 5, 2),
             Some(expected_tally_results)
         );
     }
@@ -305,7 +336,6 @@ mod tests {
         proposal.created = 1;
         proposal.parameters.voting_period = 3;
         proposal.parameters.temp_quorum_vote_count = 3;
-        proposal.parameters.temp_total_vote_count = 4;
 
         let votes = vec![
             Vote {
@@ -336,7 +366,7 @@ mod tests {
         };
 
         assert_eq!(
-            proposal.tally_results(proposal_id, votes, now),
+            proposal.tally_results(proposal_id, votes, 4, now),
             Some(expected_tally_results)
         );
     }
@@ -350,13 +380,12 @@ mod tests {
         proposal.created = 1;
         proposal.parameters.voting_period = 3;
         proposal.parameters.temp_quorum_vote_count = 3;
-        proposal.parameters.temp_total_vote_count = 4;
 
         let votes = vec![Vote {
             voter_id: 1,
             vote_kind: VoteKind::Abstain,
         }];
 
-        assert_eq!(proposal.tally_results(proposal_id, votes, now), None);
+        assert_eq!(proposal.tally_results(proposal_id, votes, 5, now), None);
     }
 }

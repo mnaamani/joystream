@@ -7,25 +7,8 @@
 //!
 //! Should be added to the runtime along with Default implementation for Call:
 //!
-//!
-//! ```
-//! impl Default for Call {
-//!     fn default() -> Self {
-//!       panic!("shouldn't call default for Call");
-//!     }
-//! }
-//!
-//! impl proposals_v2::engine::Trait for Runtime {
-//!    type ProposalCode = Call;
-//!
-//!    type ProposalOrigin = system::EnsureRoot<Self::AccountId>;
-//!
-//!    type VoteOrigin = system::EnsureSigned<Self::AccountId>;
-//! }
-//! ```
-//!
+
 use rstd::boxed::Box;
-use rstd::fmt::Debug;
 use rstd::prelude::*;
 
 use runtime_primitives::traits::{Dispatchable, EnsureOrigin};
@@ -46,8 +29,8 @@ pub trait Trait: system::Trait + timestamp::Trait {
     /// Origin from which votes must come.
     type VoteOrigin: EnsureOrigin<Self::Origin, Success = Self::AccountId>;
 
-    // Calculates quorum and vote threshold
-    //type QuorumProvider: QuorumProvider;
+    /// Provides data for voting. Defines maximum voters count for the proposal.
+    type TotalVotersCounter: VotersParameters;
 }
 
 // Storage for the proposals module
@@ -173,9 +156,12 @@ impl<T: Trait> Module<T> {
             let votes = Self::votes_by_proposal(proposal_id);
             let proposal = Self::proposals(proposal_id);
 
-            if let Some(tally_result) =
-                proposal.tally_results(proposal_id, votes, Self::current_block())
-            {
+            if let Some(tally_result) = proposal.tally_results(
+                proposal_id,
+                votes,
+                T::TotalVotersCounter::total_voters_count(),
+                Self::current_block(),
+            ) {
                 results.push(tally_result);
             }
         }
