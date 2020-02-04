@@ -140,12 +140,15 @@ impl<T: Trait> Module<T> {
             T::ProposalCodeDecoder::decode_proposal(proposal.proposal_type, proposal_code);
 
         let new_proposal_status = match proposal_code_result {
-            Ok(proposal_code) => match proposal_code.execute() {
-                Ok(_) => ProposalStatus::Executed,
-                Err(error) => ProposalStatus::Failed {
-                    error: error.as_bytes().to_vec(),
-                },
-            },
+            Ok(proposal_code) => {
+                if let Err(error) = proposal_code.execute() {
+                    ProposalStatus::Failed {
+                        error: error.as_bytes().to_vec(),
+                    }
+                } else {
+                    ProposalStatus::Executed
+                }
+            }
             Err(error) => ProposalStatus::Failed {
                 error: error.as_bytes().to_vec(),
             },

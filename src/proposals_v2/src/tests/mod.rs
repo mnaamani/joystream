@@ -6,7 +6,84 @@ use mock::*;
 use codec::Encode;
 use rstd::collections::btree_set::BTreeSet;
 use runtime_primitives::traits::{OnFinalize, OnInitialize};
-use srml_support::{StorageMap, StorageValue};
+use srml_support::{dispatch, StorageMap, StorageValue};
+use system::RawOrigin;
+
+struct TextProposalFixture {
+    parameters: ProposalParameters<u64>,
+    origin: RawOrigin<u64>,
+}
+
+impl Default for TextProposalFixture {
+    fn default() -> Self {
+        TextProposalFixture {
+            parameters: ProposalParameters {
+                voting_period: 3,
+                approval_quorum_percentage: 60,
+            },
+            origin: RawOrigin::Signed(1),
+        }
+    }
+}
+
+impl TextProposalFixture {
+    fn with_parameters(self, parameters: ProposalParameters<u64>) -> Self {
+        TextProposalFixture {
+            parameters,
+            origin: self.origin,
+        }
+    }
+
+    fn with_origin(self, origin: RawOrigin<u64>) -> Self {
+        TextProposalFixture {
+            parameters: self.parameters,
+            origin,
+        }
+    }
+
+    fn call_and_assert(self, result: dispatch::Result) {
+        let text_proposal = crate::codex::TextProposalExecutable {
+            title: b"title".to_vec(),
+            body: b"body".to_vec(),
+        };
+
+        assert_eq!(
+            ProposalsEngine::create_proposal(
+                self.origin.into(),
+                self.parameters,
+                text_proposal.proposal_type(),
+                text_proposal.encode()
+            ),
+            result
+        );
+    }
+}
+
+struct VoteGenerator {
+    proposal_id: u32,
+    current_account_id: u64,
+}
+
+impl VoteGenerator {
+    fn new(proposal_id: u32) -> Self {
+        VoteGenerator {
+            proposal_id,
+            current_account_id: 0,
+        }
+    }
+    fn vote_and_assert(&mut self, vote_kind: VoteKind) {
+        self.current_account_id += 1;
+
+        assert_eq!(
+            ProposalsEngine::vote(
+                system::RawOrigin::Signed(self.current_account_id).into(),
+                self.proposal_id,
+                vote_kind
+            ),
+            Ok(())
+        );
+    }
+}
 
 // Recommendation from Parity on testing on_finalize
 // https://substrate.dev/docs/en/next/development/module/tests
@@ -28,25 +105,9 @@ fn run_to_block_and_finalize(n: u64) {
 #[test]
 fn create_text_proposal_succeeds() {
     initial_test_ext().execute_with(|| {
-        let origin = system::RawOrigin::Signed(1).into();
+        let text_proposal = TextProposalFixture::default();
 
-        let text_proposal = crate::codex::TextProposalExecutable {
-            title: b"title".to_vec(),
-            body: b"body".to_vec(),
-        };
-
-        let parameters = ProposalParameters {
-            voting_period: 3,
-            approval_quorum_percentage: 60,
-        };
-
-        assert!(ProposalsEngine::create_proposal(
-            origin,
-            parameters,
-            text_proposal.proposal_type(),
-            text_proposal.encode()
-        )
-        .is_ok());
+        text_proposal.call_and_assert(Ok(()));
     });
 }
 
@@ -77,59 +138,23 @@ fn create_text_proposal_codex_call_fails_with_insufficient_rights() {
 #[test]
 fn create_text_proposal_fails_with_insufficient_rights() {
     initial_test_ext().execute_with(|| {
-        let text_proposal = crate::codex::TextProposalExecutable {
-            title: b"title".to_vec(),
-            body: b"body".to_vec(),
-        };
+        let text_proposal = TextProposalFixture::default().with_origin(RawOrigin::None);
 
-        let origin = system::RawOrigin::None.into();
-        let parameters = ProposalParameters {
-            voting_period: 3,
-            approval_quorum_percentage: 60,
-        };
-        assert!(ProposalsEngine::create_proposal(
-            origin,
-            parameters,
-            text_proposal.proposal_type(),
-            text_proposal.encode()
-        )
-        .is_err());
+        text_proposal.call_and_assert(Err("Invalid origin"));
     });
 }
 
 #[test]
 fn vote_succeeds() {
     initial_test_ext().execute_with(|| {
-        let text_proposal = crate::codex::TextProposalExecutable {
-            title: b"title".to_vec(),
-            body: b"body".to_vec(),
-        };
-
-        let parameters = ProposalParameters {
-            voting_period: 3,
-            approval_quorum_percentage: 60,
-        };
-
-        let origin = system::RawOrigin::Signed(1).into();
-        assert!(ProposalsEngine::create_proposal(
-            origin,
-            parameters,
-            text_proposal.proposal_type(),
-            text_proposal.encode()
-        )
-        .is_ok());
+        let text_proposal = TextProposalFixture::default();
+        text_proposal.call_and_assert(Ok(()));
 
         // last created proposal id equals current proposal count
-        let proposals_id = <ProposalCount>::get();
+        let proposal_id = <ProposalCount>::get();
 
-        assert_eq!(
-            ProposalsEngine::vote(
-                system::RawOrigin::Signed(1).into(),
-                proposals_id,
-                VoteKind::Approve
-            ),
-            Ok(())
-        );
+        let mut vote_generator = VoteGenerator::new(proposal_id);
+        vote_generator.vote_and_assert(VoteKind::Approve);
     });
 }
 
@@ -146,60 +171,22 @@ fn vote_fails_with_insufficient_rights() {
 #[test]
 fn proposal_execution_succeeds() {
     initial_test_ext().execute_with(|| {
-        let text_proposal = crate::codex::TextProposalExecutable {
-            title: b"title".to_vec(),
-            body: b"body".to_vec(),
-        };
-
         let parameters = ProposalParameters {
             voting_period: 3,
             approval_quorum_percentage: 60,
         };
 
-        let origin = system::RawOrigin::Signed(1).into();
-        assert!(ProposalsEngine::create_proposal(
-            origin,
-            parameters,
-            text_proposal.proposal_type(),
-            text_proposal.encode()
-        )
-        .is_ok());
+        let text_proposal = TextProposalFixture::default().with_parameters(parameters);
+        text_proposal.call_and_assert(Ok(()));
 
         // last created proposal id equals current proposal count
         let proposals_id = <ProposalCount>::get();
 
-        assert_eq!(
-            ProposalsEngine::vote(
-                system::RawOrigin::Signed(1).into(),
-                proposals_id,
-                VoteKind::Approve
-            ),
-            Ok(())
-        );
-        assert_eq!(
-            ProposalsEngine::vote(
-                system::RawOrigin::Signed(2).into(),
-                proposals_id,
-                VoteKind::Approve
-            ),
-            Ok(())
-        );
-        assert_eq!(
-            ProposalsEngine::vote(
-                system::RawOrigin::Signed(3).into(),
-                proposals_id,
-                VoteKind::Approve
-            ),
-            Ok(())
-        );
-        assert_eq!(
-            ProposalsEngine::vote(
-                system::RawOrigin::Signed(4).into(),
-                proposals_id,
-                VoteKind::Approve
-            ),
-            Ok(())
-        );
+        let mut vote_generator = VoteGenerator::new(proposals_id);
+        vote_generator.vote_and_assert(VoteKind::Approve);
+        vote_generator.vote_and_assert(VoteKind::Approve);
+        vote_generator.vote_and_assert(VoteKind::Approve);
+        vote_generator.vote_and_assert(VoteKind::Approve);
 
         run_to_block_and_finalize(2);
 
@@ -221,55 +208,22 @@ fn proposal_execution_succeeds() {
 #[test]
 fn tally_calculation_succeeds() {
     initial_test_ext().execute_with(|| {
-        let text_proposal = crate::codex::TextProposalExecutable {
-            title: b"title".to_vec(),
-            body: b"body".to_vec(),
-        };
-
         let parameters = ProposalParameters {
             voting_period: 3,
             approval_quorum_percentage: 49,
         };
 
-        let origin = system::RawOrigin::Signed(1).into();
-        assert!(ProposalsEngine::create_proposal(
-            origin,
-            parameters,
-            text_proposal.proposal_type(),
-            text_proposal.encode()
-        )
-        .is_ok());
+        let text_proposal = TextProposalFixture::default().with_parameters(parameters);
+        text_proposal.call_and_assert(Ok(()));
 
         // last created proposal id equals current proposal count
         let proposals_id = <ProposalCount>::get();
 
-        assert!(ProposalsEngine::vote(
-            system::RawOrigin::Signed(1).into(),
-            proposals_id,
-            VoteKind::Approve
-        )
-        .is_ok());
-
-        assert!(ProposalsEngine::vote(
-            system::RawOrigin::Signed(2).into(),
-            proposals_id,
-            VoteKind::Approve
-        )
-        .is_ok());
-
-        assert!(ProposalsEngine::vote(
-            system::RawOrigin::Signed(3).into(),
-            proposals_id,
-            VoteKind::Reject
-        )
-        .is_ok());
-
-        assert!(ProposalsEngine::vote(
-            system::RawOrigin::Signed(4).into(),
-            proposals_id,
-            VoteKind::Abstain
-        )
-        .is_ok());
+        let mut vote_generator = VoteGenerator::new(proposals_id);
+        vote_generator.vote_and_assert(VoteKind::Approve);
+        vote_generator.vote_and_assert(VoteKind::Approve);
+        vote_generator.vote_and_assert(VoteKind::Reject);
+        vote_generator.vote_and_assert(VoteKind::Abstain);
 
         run_to_block_and_finalize(2);
 
@@ -292,62 +246,17 @@ fn tally_calculation_succeeds() {
 #[test]
 fn rejected_tally_results_and_remove_proposal_id_from_active_succeeds() {
     initial_test_ext().execute_with(|| {
-        let text_proposal = crate::codex::TextProposalExecutable {
-            title: b"title".to_vec(),
-            body: b"body".to_vec(),
-        };
-
-        let parameters = ProposalParameters {
-            voting_period: 3,
-            approval_quorum_percentage: 60,
-        };
-
-        let origin = system::RawOrigin::Signed(1).into();
-        assert!(ProposalsEngine::create_proposal(
-            origin,
-            parameters,
-            text_proposal.proposal_type(),
-            text_proposal.encode()
-        )
-        .is_ok());
+        let text_proposal = TextProposalFixture::default();
+        text_proposal.call_and_assert(Ok(()));
 
         // last created proposal id equals current proposal count
         let proposal_id = <ProposalCount>::get();
 
-        assert_eq!(
-            ProposalsEngine::vote(
-                system::RawOrigin::Signed(1).into(),
-                proposal_id,
-                VoteKind::Reject
-            ),
-            Ok(())
-        );
-
-        assert_eq!(
-            ProposalsEngine::vote(
-                system::RawOrigin::Signed(2).into(),
-                proposal_id,
-                VoteKind::Reject
-            ),
-            Ok(())
-        );
-
-        assert_eq!(
-            ProposalsEngine::vote(
-                system::RawOrigin::Signed(3).into(),
-                proposal_id,
-                VoteKind::Abstain
-            ),
-            Ok(())
-        );
-        assert_eq!(
-            ProposalsEngine::vote(
-                system::RawOrigin::Signed(4).into(),
-                proposal_id,
-                VoteKind::Abstain
-            ),
-            Ok(())
-        );
+        let mut vote_generator = VoteGenerator::new(proposal_id);
+        vote_generator.vote_and_assert(VoteKind::Reject);
+        vote_generator.vote_and_assert(VoteKind::Reject);
+        vote_generator.vote_and_assert(VoteKind::Abstain);
+        vote_generator.vote_and_assert(VoteKind::Abstain);
 
         let mut active_proposals_id = <ActiveProposalIds>::get();
 
