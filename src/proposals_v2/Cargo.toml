@@ -21,6 +21,11 @@ std = [
     'serde',
 ]
 
+
+[dependencies.num_enum]
+default_features = false
+version = "0.4.2"
+
 [dependencies.serde]
 features = ['derive']
 optional = true

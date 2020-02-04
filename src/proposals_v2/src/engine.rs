@@ -8,21 +8,16 @@
 //! Should be added to the runtime along with Default implementation for Call:
 //!
 
-use rstd::boxed::Box;
 use rstd::prelude::*;
 
-use runtime_primitives::traits::{Dispatchable, EnsureOrigin};
-use runtime_primitives::DispatchError;
+use runtime_primitives::traits::EnsureOrigin;
 
-use srml_support::{decl_module, decl_storage, dispatch, print, Parameter};
+use srml_support::{decl_module, decl_storage, dispatch, print};
 
 use super::*;
 
 /// Proposals engine trait.
 pub trait Trait: system::Trait + timestamp::Trait {
-    /// Proposals executable code. Can be instantiated by external module Call enum members.
-    type ProposalCode: Parameter + Dispatchable<Origin = Self::Origin> + Default;
-
     /// Origin from which proposals must come.
     type ProposalOrigin: EnsureOrigin<Self::Origin, Success = Self::AccountId>;
 
@@ -31,6 +26,11 @@ pub trait Trait: system::Trait + timestamp::Trait {
 
     /// Provides data for voting. Defines maximum voters count for the proposal.
     type TotalVotersCounter: VotersParameters;
+
+    //    /// Proposals executable code. Requires decoding before the execution.
+    //    type ProposalCode: Parameter + Default;
+
+    type ProposalCodeDecoder: ProposalCodeDecoder;
 }
 
 // Storage for the proposals module
@@ -43,7 +43,7 @@ decl_storage! {
         pub ProposalCount get(fn proposal_count): u32;
 
         /// Map proposal executable code by proposal id.
-        ProposalCode get(fn proposal_codes): map u32 =>  T::ProposalCode;
+        ProposalCode get(fn proposal_codes): map u32 =>  Vec<u8>;
 
         /// Map votes by proposal id.
         VotesByProposalId get(fn votes_by_proposal): map u32 => Vec<Vote<T::AccountId>>;
@@ -59,30 +59,6 @@ decl_storage! {
 decl_module! {
     /// 'Proposal engine' substrate module
     pub struct Module<T: Trait> for enum Call where origin: T::Origin {
-        // TODO: introduce own error types
-        /// Create proposal. Requires root permissions.
-        pub fn create_proposal(
-            origin,
-            parameters: ProposalParameters<T::BlockNumber>,
-            proposal_code: Box<T::ProposalCode>,){
-            let proposer_id = T::ProposalOrigin::ensure_origin(origin)?;
-
-            let next_proposal_count_value = Self::proposal_count() + 1;
-            let new_proposal_id = next_proposal_count_value;
-
-            let new_proposal = Proposal {
-                created: Self::current_block(),
-                parameters,
-                proposer_id,
-                status: ProposalStatus::Active,
-            };
-
-            // mutation
-            <Proposals<T>>::insert(new_proposal_id, new_proposal);
-            <ProposalCode<T>>::insert(new_proposal_id, proposal_code);
-            ActiveProposalIds::mutate(|ids| ids.push(new_proposal_id));
-            ProposalCount::put(next_proposal_count_value);
-        }
 
         /// Vote extrinsic. Conditions:  origin must allow votes.
         pub fn vote(origin, proposal_id: u32, vote: VoteKind) -> dispatch::Result {
@@ -114,6 +90,40 @@ decl_module! {
 }
 
 impl<T: Trait> Module<T> {
+    // TODO: introduce own error types
+    /// Create proposal. Requires root permissions.
+    pub fn create_proposal(
+        origin: T::Origin,
+        //        proposer_id: T::AccountId,
+        parameters: ProposalParameters<T::BlockNumber>,
+        proposal_type: u32,
+        proposal_code: Vec<u8>,
+    ) -> Result<(), &'static str> {
+        //        ensure_root(origin)?;
+        let proposer_id = T::ProposalOrigin::ensure_origin(origin)?; //TODO
+
+        let next_proposal_count_value = Self::proposal_count() + 1;
+        let new_proposal_id = next_proposal_count_value;
+
+        let new_proposal = Proposal {
+            created: Self::current_block(),
+            parameters,
+            proposer_id,
+            proposal_type,
+            status: ProposalStatus::Active,
+        };
+
+        // mutation
+        <Proposals<T>>::insert(new_proposal_id, new_proposal);
+        <ProposalCode>::insert(new_proposal_id, proposal_code);
+        ActiveProposalIds::mutate(|ids| ids.push(new_proposal_id));
+        ProposalCount::put(next_proposal_count_value);
+
+        Ok(())
+    }
+}
+
+impl<T: Trait> Module<T> {
     // Wrapper-function over system::block_number()
     fn current_block() -> T::BlockNumber {
         <system::Module<T>>::block_number()
@@ -137,15 +147,19 @@ impl<T: Trait> Module<T> {
 
     // Executes approved proposal code
     fn execute_proposal(proposal_id: u32) {
-        let origin = system::RawOrigin::Root.into();
-        let proposal = Self::proposal_codes(proposal_id);
+        //let origin = system::RawOrigin::Root.into();
+        let proposal = Self::proposals(proposal_id);
+        let proposal_code = Self::proposal_codes(proposal_id);
 
-        let result = proposal.dispatch(origin);
+        let proposal =
+            T::ProposalCodeDecoder::decode_proposal(proposal.proposal_type, proposal_code);
 
-        if let Err(e) = result {
-            let e: DispatchError = e.into();
-            print(e);
-        };
+        let _result = proposal.unwrap().execute();
+
+        //        if let Err(e) = result {
+        //            let e: DispatchError = e.into();
+        //            print(e);
+        //        };
     }
 
     /// Voting results tally.

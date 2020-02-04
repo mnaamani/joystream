@@ -43,13 +43,13 @@ impl Default for Call {
 }
 
 impl crate::engine::Trait for Test {
-    type ProposalCode = Call;
-
     type ProposalOrigin = system::EnsureSigned<Self::AccountId>;
 
     type VoteOrigin = system::EnsureSigned<Self::AccountId>;
 
     type TotalVotersCounter = ();
+
+    type ProposalCodeDecoder = crate::codex::ProposalRegistry;
 }
 
 impl VotersParameters for () {

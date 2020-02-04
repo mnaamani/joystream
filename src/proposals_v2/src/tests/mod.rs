@@ -5,6 +5,7 @@ use mock::*;
 
 use crate::engine::*;
 
+use codec::Encode;
 use runtime_primitives::traits::{OnFinalize, OnInitialize};
 use srml_support::{StorageMap, StorageValue};
 
@@ -30,18 +31,46 @@ fn create_text_proposal_succeeds() {
     initial_test_ext().execute_with(|| {
         let origin = system::RawOrigin::Signed(1).into();
 
-        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::text_proposal(
-            b"title".to_vec(),
-            b"body".to_vec(),
-        ));
+        let text_proposal = crate::codex::TextProposalExecutable {
+            title: b"title".to_vec(),
+            body: b"body".to_vec(),
+        };
 
         let parameters = ProposalParameters {
             voting_period: 3,
-            approval_quorum_percentage : 60,
+            approval_quorum_percentage: 60,
         };
 
+        assert!(Proposals::create_proposal(
+            origin,
+            parameters,
+            text_proposal.proposal_type(),
+            text_proposal.encode()
+        )
+        .is_ok());
+    });
+}
+
+#[test]
+fn create_text_proposal_codex_call_succeeds() {
+    initial_test_ext().execute_with(|| {
+        let origin = system::RawOrigin::Signed(1).into();
+
         assert!(
-            Proposals::create_proposal(origin, parameters, Box::new(text_proposal_call)).is_ok()
+            ProposalCodex::create_text_proposal(origin, b"title".to_vec(), b"body".to_vec(),)
+                .is_ok()
+        );
+    });
+}
+
+#[test]
+fn create_text_proposal_codex_call_fails_with_insufficient_rights() {
+    initial_test_ext().execute_with(|| {
+        let origin = system::RawOrigin::None.into();
+
+        assert!(
+            ProposalCodex::create_text_proposal(origin, b"title".to_vec(), b"body".to_vec(),)
+                .is_err()
         );
     });
 }
@@ -49,40 +78,47 @@ fn create_text_proposal_succeeds() {
 #[test]
 fn create_text_proposal_fails_with_insufficient_rights() {
     initial_test_ext().execute_with(|| {
-        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::text_proposal(
-            b"title".to_vec(),
-            b"body".to_vec(),
-        ));
+        let text_proposal = crate::codex::TextProposalExecutable {
+            title: b"title".to_vec(),
+            body: b"body".to_vec(),
+        };
 
         let origin = system::RawOrigin::None.into();
         let parameters = ProposalParameters {
             voting_period: 3,
-            approval_quorum_percentage : 60,
+            approval_quorum_percentage: 60,
         };
-        assert_eq!(
-            Proposals::create_proposal(origin, parameters, Box::new(text_proposal_call)),
-            Err("Invalid origin")
-        );
+        assert!(Proposals::create_proposal(
+            origin,
+            parameters,
+            text_proposal.proposal_type(),
+            text_proposal.encode()
+        )
+        .is_err());
     });
 }
 
 #[test]
 fn vote_succeeds() {
     initial_test_ext().execute_with(|| {
-        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::text_proposal(
-            b"title".to_vec(),
-            b"body".to_vec(),
-        ));
+        let text_proposal = crate::codex::TextProposalExecutable {
+            title: b"title".to_vec(),
+            body: b"body".to_vec(),
+        };
 
         let parameters = ProposalParameters {
             voting_period: 3,
-            approval_quorum_percentage : 60,
+            approval_quorum_percentage: 60,
         };
 
         let origin = system::RawOrigin::Signed(1).into();
-        assert!(
-            Proposals::create_proposal(origin, parameters, Box::new(text_proposal_call)).is_ok()
-        );
+        assert!(Proposals::create_proposal(
+            origin,
+            parameters,
+            text_proposal.proposal_type(),
+            text_proposal.encode()
+        )
+        .is_ok());
 
         // last created proposal id equals current proposal count
         let proposals_id = <ProposalCount>::get();
@@ -111,20 +147,24 @@ fn vote_fails_with_insufficient_rights() {
 #[test]
 fn proposal_execution_succeeds() {
     initial_test_ext().execute_with(|| {
-        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::text_proposal(
-            b"title".to_vec(),
-            b"body".to_vec(),
-        ));
+        let text_proposal = crate::codex::TextProposalExecutable {
+            title: b"title".to_vec(),
+            body: b"body".to_vec(),
+        };
 
         let parameters = ProposalParameters {
             voting_period: 3,
-            approval_quorum_percentage : 60,
+            approval_quorum_percentage: 60,
         };
 
         let origin = system::RawOrigin::Signed(1).into();
-        assert!(
-            Proposals::create_proposal(origin, parameters, Box::new(text_proposal_call)).is_ok()
-        );
+        assert!(Proposals::create_proposal(
+            origin,
+            parameters,
+            text_proposal.proposal_type(),
+            text_proposal.encode()
+        )
+        .is_ok());
 
         // last created proposal id equals current proposal count
         let proposals_id = <ProposalCount>::get();
@@ -145,20 +185,24 @@ fn proposal_execution_succeeds() {
 #[test]
 fn tally_calculation_succeeds() {
     initial_test_ext().execute_with(|| {
-        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::text_proposal(
-            b"title".to_vec(),
-            b"body".to_vec(),
-        ));
+        let text_proposal = crate::codex::TextProposalExecutable {
+            title: b"title".to_vec(),
+            body: b"body".to_vec(),
+        };
 
         let parameters = ProposalParameters {
             voting_period: 3,
-            approval_quorum_percentage : 49,
+            approval_quorum_percentage: 49,
         };
 
         let origin = system::RawOrigin::Signed(1).into();
-        assert!(
-            Proposals::create_proposal(origin, parameters, Box::new(text_proposal_call)).is_ok()
-        );
+        assert!(Proposals::create_proposal(
+            origin,
+            parameters,
+            text_proposal.proposal_type(),
+            text_proposal.encode()
+        )
+        .is_ok());
 
         // last created proposal id equals current proposal count
         let proposals_id = <ProposalCount>::get();
@@ -212,20 +256,24 @@ fn tally_calculation_succeeds() {
 #[test]
 fn rejected_tally_results_and_remove_proposal_id_from_active_succeeds() {
     initial_test_ext().execute_with(|| {
-        let text_proposal_call = mock::Call::ProposalCodex(codex::Call::text_proposal(
-            b"title".to_vec(),
-            b"body".to_vec(),
-        ));
+        let text_proposal = crate::codex::TextProposalExecutable {
+            title: b"title".to_vec(),
+            body: b"body".to_vec(),
+        };
 
         let parameters = ProposalParameters {
             voting_period: 3,
-            approval_quorum_percentage : 60,
+            approval_quorum_percentage: 60,
         };
 
         let origin = system::RawOrigin::Signed(1).into();
-        assert!(
-            Proposals::create_proposal(origin, parameters, Box::new(text_proposal_call)).is_ok()
-        );
+        assert!(Proposals::create_proposal(
+            origin,
+            parameters,
+            text_proposal.proposal_type(),
+            text_proposal.encode()
+        )
+        .is_ok());
 
         // last created proposal id equals current proposal count
         let proposal_id = <ProposalCount>::get();

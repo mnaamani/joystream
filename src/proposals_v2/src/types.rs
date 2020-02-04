@@ -74,6 +74,8 @@ pub struct ProposalParameters<BlockNumber> {
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[derive(Encode, Decode, Default, Clone, PartialEq, Eq, Debug)]
 pub struct Proposal<BlockNumber, AccountId> {
+    pub proposal_type: u32,
+
     /// Proposals parameter, characterize different proposal types.
     pub parameters: ProposalParameters<BlockNumber>,
 
@@ -225,6 +227,17 @@ where
     pub fn is_voting_completed(&self) -> bool {
         self.votes_count == self.total_voters_count
     }
+}
+
+pub trait ProposalExecutable {
+    fn execute(&self);
+}
+
+pub trait ProposalCodeDecoder {
+    fn decode_proposal(
+        proposal_type: u32,
+        proposal_code: Vec<u8>,
+    ) -> Result<Box<dyn ProposalExecutable>, &'static str>;
 }
 
 #[cfg(test)]
