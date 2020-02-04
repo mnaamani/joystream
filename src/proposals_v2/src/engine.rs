@@ -3,10 +3,11 @@
 //!
 //! Supported extrinsics:
 //! - vote
+//!
+//! Public API (requires root origin):
 //! - create_proposal
 //!
-//! Should be added to the runtime along with Default implementation for Call:
-//!
+
 
 use rstd::collections::btree_set::BTreeSet;
 use rstd::prelude::*;
@@ -28,6 +29,7 @@ pub trait Trait: system::Trait + timestamp::Trait {
     /// Provides data for voting. Defines maximum voters count for the proposal.
     type TotalVotersCounter: VotersParameters;
 
+    /// Converts proposal code binary to executable representation
     type ProposalCodeDecoder: ProposalCodeDecoder;
 }
 

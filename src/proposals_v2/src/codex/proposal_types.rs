@@ -8,12 +8,18 @@ use srml_support::{dispatch, print};
 
 use crate::{ProposalCodeDecoder, ProposalExecutable};
 
+/// Defines allowed proposals types. Integer value serves as proposal_type_id.
 #[derive(Debug, Eq, PartialEq, TryFromPrimitive, IntoPrimitive)]
 #[repr(u32)]
 pub enum ProposalType {
-    Dummy = 0,
+    /// Text(signal) proposal type
     Text = 1,
-    Faulty = 2,
+
+    /// Testing proposal type
+    Dummy = 10000,
+
+    /// Testing proposal type for faults
+    Faulty = 10001,
 }
 
 impl ProposalType {
@@ -46,6 +52,7 @@ impl ProposalCodeDecoder for ProposalType {
     }
 }
 
+/// Testing proposal type
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, Default)]
 pub struct DummyExecutable {
     data: Vec<u8>,
@@ -59,6 +66,7 @@ impl ProposalExecutable for DummyExecutable {
     }
 }
 
+/// Faulty proposal executable code wrapper. Used for failed proposal execution tests.
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, Default)]
 pub struct FaultyExecutable;
 impl ProposalExecutable for FaultyExecutable {
@@ -68,18 +76,24 @@ impl ProposalExecutable for FaultyExecutable {
 }
 
 impl FaultyExecutable {
+    /// Converts faulty proposal type to proposal_type_id
     pub fn proposal_type(&self) -> u32 {
         ProposalType::Faulty.into()
     }
 }
 
+/// Text (signal) proposal executable code wrapper. Prints its content on execution.
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, Default)]
 pub struct TextProposalExecutable {
+    /// Text proposal title
     pub title: Vec<u8>,
+
+    /// Text proposal body
     pub body: Vec<u8>,
 }
 
 impl TextProposalExecutable {
+    /// Converts text proposal type to proposal_type_id
     pub fn proposal_type(&self) -> u32 {
         ProposalType::Text.into()
     }

@@ -27,9 +27,12 @@ pub enum ProposalStatus {
     /// Not enough votes and voting period expired.
     Expired,
 
+    /// Proposal was successfully executed
     Executed,
 
+    /// Proposal was executed and failed with an error
     Failed {
+        /// Fail error
         error: Vec<u8>,
     },
     // Withdrawn TODO: implement
@@ -82,6 +85,7 @@ pub struct ProposalParameters<BlockNumber> {
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[derive(Encode, Decode, Default, Clone, PartialEq, Eq, Debug)]
 pub struct Proposal<BlockNumber, AccountId> {
+    /// Proposal type id
     pub proposal_type: u32,
 
     /// Proposals parameter, characterize different proposal types.
@@ -237,11 +241,15 @@ where
     }
 }
 
+/// Proposal executable code wrapper
 pub trait ProposalExecutable {
+    /// Executes proposal code
     fn execute(&self) -> dispatch::Result;
 }
 
+/// Proposal code binary converter
 pub trait ProposalCodeDecoder {
+    /// Converts proposal code binary to executable representation
     fn decode_proposal(
         proposal_type: u32,
         proposal_code: Vec<u8>,
