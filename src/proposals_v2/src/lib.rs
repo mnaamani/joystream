@@ -20,4 +20,8 @@ mod tests;
 
 pub use codex::*;
 pub use engine::*;
-pub use types::*;
+
+pub use types::TallyResult;
+pub use types::{Proposal, ProposalParameters, ProposalStatus};
+pub use types::{ProposalCodeDecoder, ProposalExecutable};
+pub use types::{Vote, VoteKind, VotersParameters};

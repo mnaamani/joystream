@@ -12,47 +12,53 @@ use system::RawOrigin;
 struct TextProposalFixture {
     parameters: ProposalParameters<u64>,
     origin: RawOrigin<u64>,
+    proposal_type: u32,
+    proposal_code: Vec<u8>,
 }
 
 impl Default for TextProposalFixture {
     fn default() -> Self {
+        let text_proposal = crate::codex::TextProposalExecutable {
+            title: b"title".to_vec(),
+            body: b"body".to_vec(),
+        };
+
         TextProposalFixture {
             parameters: ProposalParameters {
                 voting_period: 3,
                 approval_quorum_percentage: 60,
             },
             origin: RawOrigin::Signed(1),
+            proposal_type: text_proposal.proposal_type(),
+            proposal_code: text_proposal.encode(),
         }
     }
 }
 
 impl TextProposalFixture {
     fn with_parameters(self, parameters: ProposalParameters<u64>) -> Self {
-        TextProposalFixture {
-            parameters,
-            origin: self.origin,
-        }
+        TextProposalFixture { parameters, ..self }
     }
 
     fn with_origin(self, origin: RawOrigin<u64>) -> Self {
+        TextProposalFixture { origin, ..self }
+    }
+
+    fn with_proposal_type_and_code(self, proposal_type: u32, proposal_code: Vec<u8>) -> Self {
         TextProposalFixture {
-            parameters: self.parameters,
-            origin,
+            proposal_type,
+            proposal_code,
+            ..self
         }
     }
 
     fn call_and_assert(self, result: dispatch::Result) {
-        let text_proposal = crate::codex::TextProposalExecutable {
-            title: b"title".to_vec(),
-            body: b"body".to_vec(),
-        };
-
         assert_eq!(
             ProposalsEngine::create_proposal(
                 self.origin.into(),
                 self.parameters,
-                text_proposal.proposal_type(),
-                text_proposal.encode()
+                self.proposal_type,
+                self.proposal_code,
             ),
             result
         );
@@ -200,6 +206,50 @@ fn proposal_execution_succeeds() {
                 proposer_id: 1,
                 created: 1,
                 status: ProposalStatus::Executed
+            }
+        )
+    });
+}
+
+#[test]
+fn proposal_execution_failed() {
+    initial_test_ext().execute_with(|| {
+        let parameters = ProposalParameters {
+            voting_period: 3,
+            approval_quorum_percentage: 60,
+        };
+
+        let faulty_proposal = FaultyExecutable;
+
+        let text_proposal = TextProposalFixture::default()
+            .with_parameters(parameters)
+            .with_proposal_type_and_code(faulty_proposal.proposal_type(), faulty_proposal.encode());
+
+        text_proposal.call_and_assert(Ok(()));
+
+        // last created proposal id equals current proposal count
+        let proposals_id = <ProposalCount>::get();
+
+        let mut vote_generator = VoteGenerator::new(proposals_id);
+        vote_generator.vote_and_assert(VoteKind::Approve);
+        vote_generator.vote_and_assert(VoteKind::Approve);
+        vote_generator.vote_and_assert(VoteKind::Approve);
+        vote_generator.vote_and_assert(VoteKind::Approve);
+
+        run_to_block_and_finalize(2);
+
+        let proposal = <crate::engine::Proposals<Test>>::get(proposals_id);
+
+        assert_eq!(
+            proposal,
+            Proposal {
+                proposal_type: faulty_proposal.proposal_type(),
+                parameters,
+                proposer_id: 1,
+                created: 1,
+                status: ProposalStatus::Failed {
+                    error: "Failed".as_bytes().to_vec()
+                }
             }
         )
     });

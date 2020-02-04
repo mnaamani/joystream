@@ -5,9 +5,10 @@
 //! - create_text_proposal
 //!
 
-mod registry;
+mod proposal_types;
 
-pub use registry::{ProposalRegistry, TextProposalExecutable};
+pub use proposal_types::FaultyExecutable;
+pub use proposal_types::{ProposalType, TextProposalExecutable};
 
 use rstd::vec::Vec;
 

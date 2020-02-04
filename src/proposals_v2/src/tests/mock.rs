@@ -49,7 +49,7 @@ impl crate::engine::Trait for Test {
 
     type TotalVotersCounter = ();
 
-    type ProposalCodeDecoder = crate::codex::ProposalRegistry;
+    type ProposalCodeDecoder = crate::codex::ProposalType;
 }
 
 impl VotersParameters for () {
