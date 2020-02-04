@@ -31,7 +31,7 @@ parameter_types! {
 impl_outer_dispatch! {
     pub enum Call for Test where origin: Origin {
         codex::ProposalCodex,
-        proposals::Proposals,
+        proposals::ProposalsEngine,
     }
 }
 
@@ -123,5 +123,5 @@ pub fn initial_test_ext() -> runtime_io::TestExternalities {
 }
 
 pub type ProposalCodex = crate::codex::Module<Test>;
-pub type Proposals = crate::engine::Module<Test>;
+pub type ProposalsEngine = crate::engine::Module<Test>;
 pub type System = system::Module<Test>;

@@ -8,13 +8,14 @@
 //! Should be added to the runtime along with Default implementation for Call:
 //!
 
+use rstd::collections::btree_set::BTreeSet;
 use rstd::prelude::*;
-
 use runtime_primitives::traits::EnsureOrigin;
-
-use srml_support::{decl_module, decl_storage, dispatch, print};
+use srml_support::{decl_module, decl_storage, dispatch};
 
 use super::*;
+
+//TODO: implement veto
 
 /// Proposals engine trait.
 pub trait Trait: system::Trait + timestamp::Trait {
@@ -27,9 +28,6 @@ pub trait Trait: system::Trait + timestamp::Trait {
     /// Provides data for voting. Defines maximum voters count for the proposal.
     type TotalVotersCounter: VotersParameters;
 
-    //    /// Proposals executable code. Requires decoding before the execution.
-    //    type ProposalCode: Parameter + Default;
-
     type ProposalCodeDecoder: ProposalCodeDecoder;
 }
 
@@ -37,7 +35,7 @@ pub trait Trait: system::Trait + timestamp::Trait {
 decl_storage! {
     trait Store for Module<T: Trait> as Proposals {
         /// Map proposal by its id.
-        Proposals get(fn proposals): map u32 => Proposal<T::BlockNumber, T::AccountId>;
+        pub Proposals get(fn proposals): map u32 => Proposal<T::BlockNumber, T::AccountId>;
 
         /// Count of all proposals that have been created.
         pub ProposalCount get(fn proposal_count): u32;
@@ -49,7 +47,7 @@ decl_storage! {
         VotesByProposalId get(fn votes_by_proposal): map u32 => Vec<Vote<T::AccountId>>;
 
         /// Ids of proposals that are open for voting (have not been finalized yet).
-        pub ActiveProposalIds get(fn active_proposal_ids): Vec<u32> = vec![];
+        pub ActiveProposalIds get(fn active_proposal_ids): BTreeSet<u32>;
 
         /// Proposal tally results map
         pub(crate) TallyResults get(fn tally_results): map u32 => TallyResult<T::BlockNumber>;
@@ -76,21 +74,13 @@ decl_module! {
             for  tally_result in tally_results {
                 <TallyResults<T>>::insert(tally_result.proposal_id, &tally_result);
 
-                let update_proposal_result = Self::update_proposal_status(
-                    tally_result.proposal_id,
-                    tally_result.status
-                );
-
-                if let Err(e) = update_proposal_result {
-                    print(e);
-                }
+                Self::update_proposal_status(tally_result.proposal_id, tally_result.status);
             }
         }
     }
 }
 
 impl<T: Trait> Module<T> {
-    // TODO: introduce own error types
     /// Create proposal. Requires root permissions.
     pub fn create_proposal(
         origin: T::Origin,
@@ -98,9 +88,8 @@ impl<T: Trait> Module<T> {
         parameters: ProposalParameters<T::BlockNumber>,
         proposal_type: u32,
         proposal_code: Vec<u8>,
-    ) -> Result<(), &'static str> {
-        //        ensure_root(origin)?;
-        let proposer_id = T::ProposalOrigin::ensure_origin(origin)?; //TODO
+    ) -> dispatch::Result {
+        let proposer_id = T::ProposalOrigin::ensure_origin(origin)?;
 
         let next_proposal_count_value = Self::proposal_count() + 1;
         let new_proposal_id = next_proposal_count_value;
@@ -116,7 +105,7 @@ impl<T: Trait> Module<T> {
         // mutation
         <Proposals<T>>::insert(new_proposal_id, new_proposal);
         <ProposalCode>::insert(new_proposal_id, proposal_code);
-        ActiveProposalIds::mutate(|ids| ids.push(new_proposal_id));
+        ActiveProposalIds::mutate(|ids| ids.insert(new_proposal_id));
         ProposalCount::put(next_proposal_count_value);
 
         Ok(())
@@ -135,13 +124,9 @@ impl<T: Trait> Module<T> {
             voter_id,
             vote_kind: vote,
         };
-        if <VotesByProposalId<T>>::exists(proposal_id) {
-            // Append a new vote to other votes on this proposal:
-            <VotesByProposalId<T>>::mutate(proposal_id, |votes| votes.push(new_vote));
-        } else {
-            // This is the first vote on this proposal:
-            <VotesByProposalId<T>>::insert(proposal_id, vec![new_vote]);
-        }
+
+        <VotesByProposalId<T>>::mutate(proposal_id, |votes| votes.push(new_vote));
+
         Ok(())
     }
 
@@ -151,15 +136,22 @@ impl<T: Trait> Module<T> {
         let proposal = Self::proposals(proposal_id);
         let proposal_code = Self::proposal_codes(proposal_id);
 
-        let proposal =
+        let proposal_code_result =
             T::ProposalCodeDecoder::decode_proposal(proposal.proposal_type, proposal_code);
 
-        let _result = proposal.unwrap().execute();
+        let new_proposal_status = match proposal_code_result {
+            Ok(proposal_code) => match proposal_code.execute() {
+                Ok(_) => ProposalStatus::Executed,
+                Err(error) => ProposalStatus::Failed {
+                    error: error.as_bytes().to_vec(),
+                },
+            },
+            Err(error) => ProposalStatus::Failed {
+                error: error.as_bytes().to_vec(),
+            },
+        };
 
-        //        if let Err(e) = result {
-        //            let e: DispatchError = e.into();
-        //            print(e);
-        //        };
+        Self::update_proposal_status(proposal_id, new_proposal_status)
     }
 
     /// Voting results tally.
@@ -183,46 +175,29 @@ impl<T: Trait> Module<T> {
         results
     }
 
-    /// Updates proposal status and removes proposal from active ids.
-    fn update_proposal_status(proposal_id: u32, new_status: ProposalStatus) -> dispatch::Result {
-        let all_active_ids = Self::active_proposal_ids();
-        let all_len = all_active_ids.len();
-        let other_active_ids: Vec<u32> = all_active_ids
-            .into_iter()
-            .filter(|&id| id != proposal_id)
-            .collect();
+    /// Updates proposal status and removes proposal id from active id set.
+    fn update_proposal_status(proposal_id: u32, new_status: ProposalStatus) {
+        <Proposals<T>>::mutate(proposal_id, |p| p.status = new_status.clone());
+        ActiveProposalIds::mutate(|ids| ids.remove(&proposal_id));
 
-        let not_found_in_active = other_active_ids.len() == all_len;
-        if not_found_in_active {
-            // Seems like this proposal's status has been updated and removed from active.
-            Err("MSG_PROPOSAL_STATUS_ALREADY_UPDATED")
-        } else {
-            let pid = proposal_id.clone();
-
-            let mut new_active_ids = other_active_ids;
-            match new_status {
-                ProposalStatus::Rejected | ProposalStatus::Expired => Self::reject_proposal(pid)?,
-                ProposalStatus::Approved => Self::approve_proposal(pid)?,
-                ProposalStatus::Active => {
-                    // return back active proposal id
-                    new_active_ids.push(pid);
-                }
+        match new_status {
+            ProposalStatus::Rejected | ProposalStatus::Expired => {
+                Self::reject_proposal(proposal_id)
             }
-            ActiveProposalIds::put(new_active_ids);
-            <Proposals<T>>::mutate(proposal_id, |p| p.status = new_status.clone());
-            Ok(())
+            ProposalStatus::Approved => Self::approve_proposal(proposal_id),
+            ProposalStatus::Active => {
+                // restore active proposal id
+                ActiveProposalIds::mutate(|ids| ids.insert(proposal_id));
+            }
+            ProposalStatus::Executed | ProposalStatus::Failed { .. } => {} // do nothing
         }
     }
 
     /// Reject a proposal. The staked deposit will be returned to a proposer.
-    fn reject_proposal(_proposal_id: u32) -> dispatch::Result {
-        Ok(())
-    }
+    fn reject_proposal(_proposal_id: u32) {}
 
     /// Approve a proposal. The staked deposit will be returned.
-    fn approve_proposal(proposal_id: u32) -> dispatch::Result {
+    fn approve_proposal(proposal_id: u32) {
         Self::execute_proposal(proposal_id);
-
-        Ok(())
     }
 }

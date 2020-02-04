@@ -1,11 +1,10 @@
 mod mock;
 
-use super::*;
+use crate::*;
 use mock::*;
 
-use crate::engine::*;
-
 use codec::Encode;
+use rstd::collections::btree_set::BTreeSet;
 use runtime_primitives::traits::{OnFinalize, OnInitialize};
 use srml_support::{StorageMap, StorageValue};
 
@@ -14,16 +13,16 @@ use srml_support::{StorageMap, StorageValue};
 fn run_to_block(n: u64) {
     while System::block_number() < n {
         <System as OnFinalize<u64>>::on_finalize(System::block_number());
-        <Proposals as OnFinalize<u64>>::on_finalize(System::block_number());
+        <ProposalsEngine as OnFinalize<u64>>::on_finalize(System::block_number());
         System::set_block_number(System::block_number() + 1);
         <System as OnInitialize<u64>>::on_initialize(System::block_number());
-        <Proposals as OnInitialize<u64>>::on_initialize(System::block_number());
+        <ProposalsEngine as OnInitialize<u64>>::on_initialize(System::block_number());
     }
 }
 
 fn run_to_block_and_finalize(n: u64) {
     run_to_block(n);
-    <Proposals as OnFinalize<u64>>::on_finalize(n);
+    <ProposalsEngine as OnFinalize<u64>>::on_finalize(n);
 }
 
 #[test]
@@ -41,7 +40,7 @@ fn create_text_proposal_succeeds() {
             approval_quorum_percentage: 60,
         };
 
-        assert!(Proposals::create_proposal(
+        assert!(ProposalsEngine::create_proposal(
             origin,
             parameters,
             text_proposal.proposal_type(),
@@ -88,7 +87,7 @@ fn create_text_proposal_fails_with_insufficient_rights() {
             voting_period: 3,
             approval_quorum_percentage: 60,
         };
-        assert!(Proposals::create_proposal(
+        assert!(ProposalsEngine::create_proposal(
             origin,
             parameters,
             text_proposal.proposal_type(),
@@ -112,7 +111,7 @@ fn vote_succeeds() {
         };
 
         let origin = system::RawOrigin::Signed(1).into();
-        assert!(Proposals::create_proposal(
+        assert!(ProposalsEngine::create_proposal(
             origin,
             parameters,
             text_proposal.proposal_type(),
@@ -124,7 +123,7 @@ fn vote_succeeds() {
         let proposals_id = <ProposalCount>::get();
 
         assert_eq!(
-            Proposals::vote(
+            ProposalsEngine::vote(
                 system::RawOrigin::Signed(1).into(),
                 proposals_id,
                 VoteKind::Approve
@@ -138,7 +137,7 @@ fn vote_succeeds() {
 fn vote_fails_with_insufficient_rights() {
     initial_test_ext().execute_with(|| {
         assert_eq!(
-            Proposals::vote(system::RawOrigin::None.into(), 1, VoteKind::Approve),
+            ProposalsEngine::vote(system::RawOrigin::None.into(), 1, VoteKind::Approve),
             Err("Invalid origin")
         );
     });
@@ -158,7 +157,7 @@ fn proposal_execution_succeeds() {
         };
 
         let origin = system::RawOrigin::Signed(1).into();
-        assert!(Proposals::create_proposal(
+        assert!(ProposalsEngine::create_proposal(
             origin,
             parameters,
             text_proposal.proposal_type(),
@@ -170,8 +169,32 @@ fn proposal_execution_succeeds() {
         let proposals_id = <ProposalCount>::get();
 
         assert_eq!(
-            Proposals::vote(
+            ProposalsEngine::vote(
                 system::RawOrigin::Signed(1).into(),
+                proposals_id,
+                VoteKind::Approve
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            ProposalsEngine::vote(
+                system::RawOrigin::Signed(2).into(),
+                proposals_id,
+                VoteKind::Approve
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            ProposalsEngine::vote(
+                system::RawOrigin::Signed(3).into(),
+                proposals_id,
+                VoteKind::Approve
+            ),
+            Ok(())
+        );
+        assert_eq!(
+            ProposalsEngine::vote(
+                system::RawOrigin::Signed(4).into(),
                 proposals_id,
                 VoteKind::Approve
             ),
@@ -179,6 +202,19 @@ fn proposal_execution_succeeds() {
         );
 
         run_to_block_and_finalize(2);
+
+        let proposal = <crate::engine::Proposals<Test>>::get(proposals_id);
+
+        assert_eq!(
+            proposal,
+            Proposal {
+                proposal_type: 1,
+                parameters,
+                proposer_id: 1,
+                created: 1,
+                status: ProposalStatus::Executed
+            }
+        )
     });
 }
 
@@ -196,7 +232,7 @@ fn tally_calculation_succeeds() {
         };
 
         let origin = system::RawOrigin::Signed(1).into();
-        assert!(Proposals::create_proposal(
+        assert!(ProposalsEngine::create_proposal(
             origin,
             parameters,
             text_proposal.proposal_type(),
@@ -207,28 +243,28 @@ fn tally_calculation_succeeds() {
         // last created proposal id equals current proposal count
         let proposals_id = <ProposalCount>::get();
 
-        assert!(Proposals::vote(
+        assert!(ProposalsEngine::vote(
             system::RawOrigin::Signed(1).into(),
             proposals_id,
             VoteKind::Approve
         )
         .is_ok());
 
-        assert!(Proposals::vote(
+        assert!(ProposalsEngine::vote(
             system::RawOrigin::Signed(2).into(),
             proposals_id,
             VoteKind::Approve
         )
         .is_ok());
 
-        assert!(Proposals::vote(
+        assert!(ProposalsEngine::vote(
             system::RawOrigin::Signed(3).into(),
             proposals_id,
             VoteKind::Reject
         )
         .is_ok());
 
-        assert!(Proposals::vote(
+        assert!(ProposalsEngine::vote(
             system::RawOrigin::Signed(4).into(),
             proposals_id,
             VoteKind::Abstain
@@ -267,7 +303,7 @@ fn rejected_tally_results_and_remove_proposal_id_from_active_succeeds() {
         };
 
         let origin = system::RawOrigin::Signed(1).into();
-        assert!(Proposals::create_proposal(
+        assert!(ProposalsEngine::create_proposal(
             origin,
             parameters,
             text_proposal.proposal_type(),
@@ -279,7 +315,7 @@ fn rejected_tally_results_and_remove_proposal_id_from_active_succeeds() {
         let proposal_id = <ProposalCount>::get();
 
         assert_eq!(
-            Proposals::vote(
+            ProposalsEngine::vote(
                 system::RawOrigin::Signed(1).into(),
                 proposal_id,
                 VoteKind::Reject
@@ -288,7 +324,7 @@ fn rejected_tally_results_and_remove_proposal_id_from_active_succeeds() {
         );
 
         assert_eq!(
-            Proposals::vote(
+            ProposalsEngine::vote(
                 system::RawOrigin::Signed(2).into(),
                 proposal_id,
                 VoteKind::Reject
@@ -297,7 +333,7 @@ fn rejected_tally_results_and_remove_proposal_id_from_active_succeeds() {
         );
 
         assert_eq!(
-            Proposals::vote(
+            ProposalsEngine::vote(
                 system::RawOrigin::Signed(3).into(),
                 proposal_id,
                 VoteKind::Abstain
@@ -305,7 +341,7 @@ fn rejected_tally_results_and_remove_proposal_id_from_active_succeeds() {
             Ok(())
         );
         assert_eq!(
-            Proposals::vote(
+            ProposalsEngine::vote(
                 system::RawOrigin::Signed(4).into(),
                 proposal_id,
                 VoteKind::Abstain
@@ -314,7 +350,10 @@ fn rejected_tally_results_and_remove_proposal_id_from_active_succeeds() {
         );
 
         let mut active_proposals_id = <ActiveProposalIds>::get();
-        assert_eq!(active_proposals_id, vec![proposal_id]);
+
+        let mut active_proposals_set = BTreeSet::new();
+        active_proposals_set.insert(proposal_id);
+        assert_eq!(active_proposals_id, active_proposals_set);
 
         run_to_block_and_finalize(2);
 
@@ -333,6 +372,6 @@ fn rejected_tally_results_and_remove_proposal_id_from_active_succeeds() {
         );
 
         active_proposals_id = <ActiveProposalIds>::get();
-        assert_eq!(active_proposals_id, Vec::new());
+        assert_eq!(active_proposals_id, BTreeSet::new());
     });
 }

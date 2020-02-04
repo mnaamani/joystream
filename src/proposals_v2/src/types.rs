@@ -8,6 +8,7 @@ use rstd::prelude::*;
 
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
+use srml_support::dispatch;
 
 /// Current status of the proposal
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
@@ -25,6 +26,13 @@ pub enum ProposalStatus {
 
     /// Not enough votes and voting period expired.
     Expired,
+
+    Executed,
+
+    Failed {
+        error: Vec<u8>,
+    },
+    // Withdrawn TODO: implement
 }
 
 impl Default for ProposalStatus {
@@ -56,7 +64,7 @@ impl Default for VoteKind {
 
 /// Proposal parameters required to manage proposal risk.
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-#[derive(Encode, Decode, Default, Clone, PartialEq, Eq, Debug)]
+#[derive(Encode, Decode, Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ProposalParameters<BlockNumber> {
     /// During this period, votes can be accepted
     pub voting_period: BlockNumber,
@@ -230,7 +238,7 @@ where
 }
 
 pub trait ProposalExecutable {
-    fn execute(&self);
+    fn execute(&self) -> dispatch::Result;
 }
 
 pub trait ProposalCodeDecoder {
