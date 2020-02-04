@@ -88,6 +88,8 @@ impl<T: Trait> Module<T> {
         origin: T::Origin,
         //        proposer_id: T::AccountId,
         parameters: ProposalParameters<T::BlockNumber>,
+        title: Vec<u8>,
+        body: Vec<u8>,
         proposal_type: u32,
         proposal_code: Vec<u8>,
     ) -> dispatch::Result {
@@ -99,6 +101,8 @@ impl<T: Trait> Module<T> {
         let new_proposal = Proposal {
             created: Self::current_block(),
             parameters,
+            title,
+            body,
             proposer_id,
             proposal_type,
             status: ProposalStatus::Active,

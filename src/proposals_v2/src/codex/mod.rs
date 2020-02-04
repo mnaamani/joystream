@@ -29,20 +29,22 @@ decl_module! {
     pub struct Module<T: Trait> for enum Call where origin: T::Origin {
         /// Create text (signal) proposal type. On approval prints its content.
         pub fn create_text_proposal(origin, title: Vec<u8>, body: Vec<u8>) {
-//			let proposer_id = ensure_signed(origin)?;
-
             let parameters = crate::ProposalParameters {
                 voting_period: T::BlockNumber::from(3u32),
                 approval_quorum_percentage: 49,
             };
 
-            let text_proposal = TextProposalExecutable{title, body};
+            let text_proposal = TextProposalExecutable{
+            	title: title.clone(),
+            	 body: body.clone()
+           	};
             let proposal_code = text_proposal.encode();
 
             <engine::Module<T>>::create_proposal(
                 origin,
-                //system::RawOrigin::Root.into(),
                 parameters,
+     			title,
+                body,
                 text_proposal.proposal_type(),
                 proposal_code
             )?;

@@ -14,6 +14,8 @@ struct TextProposalFixture {
     origin: RawOrigin<u64>,
     proposal_type: u32,
     proposal_code: Vec<u8>,
+    title: Vec<u8>,
+    body: Vec<u8>,
 }
 
 impl Default for TextProposalFixture {
@@ -31,6 +33,8 @@ impl Default for TextProposalFixture {
             origin: RawOrigin::Signed(1),
             proposal_type: text_proposal.proposal_type(),
             proposal_code: text_proposal.encode(),
+            title: text_proposal.title,
+            body: text_proposal.body,
         }
     }
 }
@@ -57,6 +61,8 @@ impl TextProposalFixture {
             ProposalsEngine::create_proposal(
                 self.origin.into(),
                 self.parameters,
+                self.title,
+                self.body,
                 self.proposal_type,
                 self.proposal_code,
             ),
@@ -205,7 +211,9 @@ fn proposal_execution_succeeds() {
                 parameters,
                 proposer_id: 1,
                 created: 1,
-                status: ProposalStatus::Executed
+                status: ProposalStatus::Executed,
+                title: b"title".to_vec(),
+                body: b"body".to_vec(),
             }
         )
     });
@@ -249,7 +257,9 @@ fn proposal_execution_failed() {
                 created: 1,
                 status: ProposalStatus::Failed {
                     error: "Failed".as_bytes().to_vec()
-                }
+                },
+                title: b"title".to_vec(),
+                body: b"body".to_vec(),
             }
         )
     });

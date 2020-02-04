@@ -94,6 +94,12 @@ pub struct Proposal<BlockNumber, AccountId> {
     /// Identifier of member proposing.
     pub proposer_id: AccountId,
 
+    /// Proposal title
+    pub title: Vec<u8>,
+
+    /// Proposal body
+    pub body: Vec<u8>,
+
     /// When it was created.
     pub created: BlockNumber,
 
