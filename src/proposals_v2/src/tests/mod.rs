@@ -79,6 +79,31 @@ impl TextProposalFixture {
     }
 }
 
+struct CancelProposalFixture {
+    origin: RawOrigin<u64>,
+    proposal_id: u32,
+}
+
+impl CancelProposalFixture {
+    fn new(proposal_id: u32) -> Self {
+        CancelProposalFixture {
+            proposal_id,
+            origin: RawOrigin::Signed(1),
+        }
+    }
+
+    fn with_origin(self, origin: RawOrigin<u64>) -> Self {
+        CancelProposalFixture { origin, ..self }
+    }
+
+    fn cancel_and_assert(self, expected_result: dispatch::Result) {
+        assert_eq!(
+            ProposalsEngine::cancel_proposal(self.origin.into(), self.proposal_id,),
+            expected_result
+        );
+    }
+}
+
 struct VoteGenerator {
     proposal_id: u32,
     current_account_id: u64,
@@ -452,5 +477,77 @@ fn vote_fails_on_double_voting() {
             VoteKind::Approve,
             Err("You have already voted on this proposal"),
         );
+    });
+}
+
+#[test]
+fn cancel_proposal_succeeds() {
+    initial_test_ext().execute_with(|| {
+        let parameters = ProposalParameters {
+            voting_period: 3,
+            approval_quorum_percentage: 60,
+        };
+        let text_proposal = TextProposalFixture::default().with_parameters(parameters);
+        text_proposal.create_proposal_and_assert(Ok(()));
+
+        // last created proposal id equals current proposal count
+        let proposal_id = <ProposalCount>::get();
+
+        let cancel_proposal = CancelProposalFixture::new(proposal_id);
+        cancel_proposal.cancel_and_assert(Ok(()));
+
+        let proposal = <crate::engine::Proposals<Test>>::get(proposal_id);
+
+        assert_eq!(
+            proposal,
+            Proposal {
+                proposal_type: 1,
+                parameters,
+                proposer_id: 1,
+                created: 1,
+                status: ProposalStatus::Cancelled,
+                title: b"title".to_vec(),
+                body: b"body".to_vec(),
+            }
+        )
+    });
+}
+
+#[test]
+fn cancel_proposal_fails_with_not_active_proposal() {
+    initial_test_ext().execute_with(|| {
+        let text_proposal = TextProposalFixture::default();
+        text_proposal.create_proposal_and_assert(Ok(()));
+
+        // last created proposal id equals current proposal count
+        let proposal_id = <ProposalCount>::get();
+
+        run_to_block_and_finalize(6);
+
+        let cancel_proposal = CancelProposalFixture::new(proposal_id);
+        cancel_proposal.cancel_and_assert(Err("Proposal is finalized already"));
+    });
+}
+
+#[test]
+fn cancel_proposal_fails_with_not_existing_proposal() {
+    initial_test_ext().execute_with(|| {
+        let cancel_proposal = CancelProposalFixture::new(2);
+        cancel_proposal.cancel_and_assert(Err("This proposal does not exist"));
+    });
+}
+
+#[test]
+fn cancel_proposal_fails_with_insufficient_rights() {
+    initial_test_ext().execute_with(|| {
+        let text_proposal = TextProposalFixture::default();
+        text_proposal.create_proposal_and_assert(Ok(()));
+
+        // last created proposal id equals current proposal count
+        let proposal_id = <ProposalCount>::get();
+
+        let cancel_proposal =
+            CancelProposalFixture::new(proposal_id).with_origin(RawOrigin::Signed(2));
+        cancel_proposal.cancel_and_assert(Err("You do not own this proposal"));
     });
 }

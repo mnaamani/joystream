@@ -35,7 +35,9 @@ pub enum ProposalStatus {
         /// Fail error
         error: Vec<u8>,
     },
-    // Withdrawn TODO: implement
+
+    /// Proposal was withdrawn by its proposer.
+    Cancelled,
 }
 
 impl Default for ProposalStatus {

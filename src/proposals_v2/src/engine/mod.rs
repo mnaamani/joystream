@@ -105,44 +105,20 @@ decl_module! {
             <VoteExistsByAccountByProposal<T>>::insert(voter_id, proposal_id, ());
         }
 
-//        // TODO add 'reason' why a proposer wants to cancel (UX + feedback)?
-//        /// Cancel a proposal by its original proposer. Some fee will be withdrawn from his balance.
-//        fn cancel_proposal(origin, proposal_id: u32) {
-//            let proposer = ensure_signed(origin)?;
-//
-//            ensure!(<Proposals<T>>::exists(proposal_id), MSG_PROPOSAL_NOT_FOUND);
-//            let proposal = Self::proposals(proposal_id);
-//
-//            ensure!(proposer == proposal.proposer, MSG_YOU_DONT_OWN_THIS_PROPOSAL);
-//            ensure!(proposal.status == Active, MSG_PROPOSAL_FINALIZED);
-//
-//            // Spend some minimum fee on proposer's balance for canceling a proposal
-//            let fee = Self::cancellation_fee();
-//            let _ = T::Currency::slash_reserved(&proposer, fee);
-//
-//            // Return unspent part of remaining staked deposit (after taking some fee)
-//            let left_stake = proposal.stake - fee;
-//            let _ = T::Currency::unreserve(&proposer, left_stake);
-//
-//            Self::_update_proposal_status(proposal_id, Cancelled)?;
-//            Self::deposit_event(RawEvent::ProposalCanceled(proposer, proposal_id));
-//        }
+        /// Cancel a proposal by its original proposer.
+        pub fn cancel_proposal(origin, proposal_id: u32) {
+            let proposer_id = T::ProposalOrigin::ensure_origin(origin)?;
 
-//        /// Cancel a proposal by its original proposer.
-//        fn cancel_proposal(origin, proposal_id: u32) {
-//            let proposer_id = T::ProposalOrigin::ensure_origin(origin)?;
-//
-//            ensure!(<Proposals<T>>::exists(proposal_id), errors::MSG_PROPOSAL_NOT_FOUND);
-//            let proposal = Self::proposals(proposal_id);
-//
-//            ensure!(proposer_id == proposal.proposer_id, errors::MSG_YOU_DONT_OWN_THIS_PROPOSAL);
-//            ensure!(proposal.status == Active, errors::MSG_PROPOSAL_FINALIZED);
-//
-//            // mutation
-//
-//            Self::update_proposal_status(proposal_id, ProposalStatus::Cancelled);
-//            Self::deposit_event(RawEvent::ProposalCanceled(proposer, proposal_id));
-//        }
+            ensure!(<Proposals<T>>::exists(proposal_id), errors::MSG_PROPOSAL_NOT_FOUND);
+            let proposal = Self::proposals(proposal_id);
+
+            ensure!(proposer_id == proposal.proposer_id, errors::MSG_YOU_DONT_OWN_THIS_PROPOSAL);
+            ensure!(proposal.status == ProposalStatus::Active, errors::MSG_PROPOSAL_FINALIZED);
+
+            // mutation
+
+            Self::update_proposal_status(proposal_id, ProposalStatus::Cancelled);
+        }
 
         /// Block finalization. Perform voting period check and vote result tally.
         fn on_finalize(_n: T::BlockNumber) {
@@ -274,7 +250,9 @@ impl<T: Trait> Module<T> {
                 // restore active proposal id
                 ActiveProposalIds::mutate(|ids| ids.insert(proposal_id));
             }
-            ProposalStatus::Executed | ProposalStatus::Failed { .. } => {} // do nothing
+            ProposalStatus::Executed
+            | ProposalStatus::Failed { .. }
+            | ProposalStatus::Cancelled => {} // do nothing
         }
     }
 
