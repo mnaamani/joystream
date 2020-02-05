@@ -13,11 +13,10 @@ mod errors;
 use rstd::collections::btree_set::BTreeSet;
 use rstd::prelude::*;
 use runtime_primitives::traits::EnsureOrigin;
-use srml_support::{decl_module, decl_storage, dispatch, ensure, StorageDoubleMap};
+use srml_support::{decl_module, decl_storage, dispatch, ensure, StorageDoubleMap,};
+use system::ensure_root;
 
 use super::*;
-
-//TODO: implement veto
 
 const DEFAULT_TITLE_MAX_LEN: u32 = 100;
 const DEFAULT_BODY_MAX_LEN: u32 = 10_000;
@@ -118,6 +117,20 @@ decl_module! {
             // mutation
 
             Self::update_proposal_status(proposal_id, ProposalStatus::Cancelled);
+        }
+
+        /// Veto a proposal. Must be root.
+        pub fn veto_proposal(origin, proposal_id: u32) {
+            ensure_root(origin)?;
+
+            ensure!(<Proposals<T>>::exists(proposal_id), errors::MSG_PROPOSAL_NOT_FOUND);
+            let proposal = Self::proposals(proposal_id);
+
+            ensure!(proposal.status == ProposalStatus::Active, errors::MSG_PROPOSAL_FINALIZED);
+
+            // mutation
+
+            Self::update_proposal_status(proposal_id, ProposalStatus::Vetoed);
         }
 
         /// Block finalization. Perform voting period check and vote result tally.
@@ -252,6 +265,7 @@ impl<T: Trait> Module<T> {
             }
             ProposalStatus::Executed
             | ProposalStatus::Failed { .. }
+            | ProposalStatus::Vetoed
             | ProposalStatus::Cancelled => {} // do nothing
         }
     }

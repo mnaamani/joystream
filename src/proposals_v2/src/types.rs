@@ -38,6 +38,9 @@ pub enum ProposalStatus {
 
     /// Proposal was withdrawn by its proposer.
     Cancelled,
+
+    /// Proposal was vetoed by root.
+    Vetoed,
 }
 
 impl Default for ProposalStatus {
