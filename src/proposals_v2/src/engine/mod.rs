@@ -8,15 +8,19 @@
 //! - create_proposal
 //!
 
+mod errors;
 
 use rstd::collections::btree_set::BTreeSet;
 use rstd::prelude::*;
 use runtime_primitives::traits::EnsureOrigin;
-use srml_support::{decl_module, decl_storage, dispatch};
+use srml_support::{decl_module, decl_storage, dispatch, ensure, StorageDoubleMap};
 
 use super::*;
 
 //TODO: implement veto
+
+const DEFAULT_TITLE_MAX_LEN: u32 = 100;
+const DEFAULT_BODY_MAX_LEN: u32 = 10_000;
 
 /// Proposals engine trait.
 pub trait Trait: system::Trait + timestamp::Trait {
@@ -53,6 +57,17 @@ decl_storage! {
 
         /// Proposal tally results map
         pub(crate) TallyResults get(fn tally_results): map u32 => TallyResult<T::BlockNumber>;
+
+        /// Double map for preventing duplicate votes
+        VoteExistsByAccountByProposal get(fn vote_by_proposal_by_account):
+            double_map T::AccountId, twox_256(u32) => ();
+
+
+        /// Defines max allowed proposal title length. Can be configured.
+        TitleMaxLen get(title_max_len) config(): u32 = DEFAULT_TITLE_MAX_LEN;
+
+        /// Defines max allowed proposal body length. Can be configured.
+        BodyMaxLen get(body_max_len) config(): u32 = DEFAULT_BODY_MAX_LEN;
     }
 }
 
@@ -61,11 +76,73 @@ decl_module! {
     pub struct Module<T: Trait> for enum Call where origin: T::Origin {
 
         /// Vote extrinsic. Conditions:  origin must allow votes.
-        pub fn vote(origin, proposal_id: u32, vote: VoteKind) -> dispatch::Result {
+        pub fn vote(origin, proposal_id: u32, vote: VoteKind)  {
             let voter_id = T::VoteOrigin::ensure_origin(origin)?;
 
-            Self::process_vote(voter_id, proposal_id, vote)
+            ensure!(<Proposals<T>>::exists(proposal_id), errors::MSG_PROPOSAL_NOT_FOUND);
+            let proposal = Self::proposals(proposal_id);
+
+            let not_expired = !proposal.is_voting_period_expired(Self::current_block());
+            ensure!(not_expired, errors::MSG_PROPOSAL_EXPIRED);
+
+            ensure!(proposal.status == ProposalStatus::Active, errors::MSG_PROPOSAL_FINALIZED);
+
+            let did_not_vote_before = !<VoteExistsByAccountByProposal<T>>::exists(
+                voter_id.clone(),
+                proposal_id
+            );
+
+            ensure!(did_not_vote_before, errors::MSG_YOU_ALREADY_VOTED);
+
+            let new_vote = Vote {
+                voter_id: voter_id.clone(),
+                vote_kind: vote,
+            };
+
+            // mutation
+
+            <VotesByProposalId<T>>::mutate(proposal_id, |votes| votes.push(new_vote));
+            <VoteExistsByAccountByProposal<T>>::insert(voter_id, proposal_id, ());
         }
+
+//        // TODO add 'reason' why a proposer wants to cancel (UX + feedback)?
+//        /// Cancel a proposal by its original proposer. Some fee will be withdrawn from his balance.
+//        fn cancel_proposal(origin, proposal_id: u32) {
+//            let proposer = ensure_signed(origin)?;
+//
+//            ensure!(<Proposals<T>>::exists(proposal_id), MSG_PROPOSAL_NOT_FOUND);
+//            let proposal = Self::proposals(proposal_id);
+//
+//            ensure!(proposer == proposal.proposer, MSG_YOU_DONT_OWN_THIS_PROPOSAL);
+//            ensure!(proposal.status == Active, MSG_PROPOSAL_FINALIZED);
+//
+//            // Spend some minimum fee on proposer's balance for canceling a proposal
+//            let fee = Self::cancellation_fee();
+//            let _ = T::Currency::slash_reserved(&proposer, fee);
+//
+//            // Return unspent part of remaining staked deposit (after taking some fee)
+//            let left_stake = proposal.stake - fee;
+//            let _ = T::Currency::unreserve(&proposer, left_stake);
+//
+//            Self::_update_proposal_status(proposal_id, Cancelled)?;
+//            Self::deposit_event(RawEvent::ProposalCanceled(proposer, proposal_id));
+//        }
+
+//        /// Cancel a proposal by its original proposer.
+//        fn cancel_proposal(origin, proposal_id: u32) {
+//            let proposer_id = T::ProposalOrigin::ensure_origin(origin)?;
+//
+//            ensure!(<Proposals<T>>::exists(proposal_id), errors::MSG_PROPOSAL_NOT_FOUND);
+//            let proposal = Self::proposals(proposal_id);
+//
+//            ensure!(proposer_id == proposal.proposer_id, errors::MSG_YOU_DONT_OWN_THIS_PROPOSAL);
+//            ensure!(proposal.status == Active, errors::MSG_PROPOSAL_FINALIZED);
+//
+//            // mutation
+//
+//            Self::update_proposal_status(proposal_id, ProposalStatus::Cancelled);
+//            Self::deposit_event(RawEvent::ProposalCanceled(proposer, proposal_id));
+//        }
 
         /// Block finalization. Perform voting period check and vote result tally.
         fn on_finalize(_n: T::BlockNumber) {
@@ -83,10 +160,9 @@ decl_module! {
 }
 
 impl<T: Trait> Module<T> {
-    /// Create proposal. Requires root permissions.
+    /// Create proposal. Requires 'proposal origin' membership.
     pub fn create_proposal(
         origin: T::Origin,
-        //        proposer_id: T::AccountId,
         parameters: ProposalParameters<T::BlockNumber>,
         title: Vec<u8>,
         body: Vec<u8>,
@@ -94,6 +170,18 @@ impl<T: Trait> Module<T> {
         proposal_code: Vec<u8>,
     ) -> dispatch::Result {
         let proposer_id = T::ProposalOrigin::ensure_origin(origin)?;
+
+        ensure!(!title.is_empty(), errors::MSG_EMPTY_TITLE_PROVIDED);
+        ensure!(
+            title.len() as u32 <= Self::title_max_len(),
+            errors::MSG_TOO_LONG_TITLE
+        );
+
+        ensure!(!body.is_empty(), errors::MSG_EMPTY_BODY_PROVIDED);
+        ensure!(
+            body.len() as u32 <= Self::body_max_len(),
+            errors::MSG_TOO_LONG_BODY
+        );
 
         let next_proposal_count_value = Self::proposal_count() + 1;
         let new_proposal_id = next_proposal_count_value;
@@ -122,18 +210,6 @@ impl<T: Trait> Module<T> {
     // Wrapper-function over system::block_number()
     fn current_block() -> T::BlockNumber {
         <system::Module<T>>::block_number()
-    }
-
-    // Actual vote processor. Stores votes for proposal.
-    fn process_vote(voter_id: T::AccountId, proposal_id: u32, vote: VoteKind) -> dispatch::Result {
-        let new_vote = Vote {
-            voter_id,
-            vote_kind: vote,
-        };
-
-        <VotesByProposalId<T>>::mutate(proposal_id, |votes| votes.push(new_vote));
-
-        Ok(())
     }
 
     // Executes approved proposal code

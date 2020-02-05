@@ -35,15 +35,15 @@ decl_module! {
             };
 
             let text_proposal = TextProposalExecutable{
-            	title: title.clone(),
-            	 body: body.clone()
-           	};
+                title: title.clone(),
+                 body: body.clone()
+               };
             let proposal_code = text_proposal.encode();
 
             <engine::Module<T>>::create_proposal(
                 origin,
                 parameters,
-     			title,
+                 title,
                 body,
                 text_proposal.proposal_type(),
                 proposal_code
