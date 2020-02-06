@@ -8,6 +8,7 @@ use rstd::collections::btree_set::BTreeSet;
 use runtime_primitives::traits::{OnFinalize, OnInitialize};
 use srml_support::{dispatch, StorageMap, StorageValue};
 use system::RawOrigin;
+use system::{EventRecord, Phase};
 
 struct DummyProposalFixture {
     parameters: ProposalParameters<u64>,
@@ -188,7 +189,6 @@ fn create_dummy_proposal_succeeds() {
         dummy_proposal.create_proposal_and_assert(Ok(()));
     });
 }
-
 
 #[test]
 fn create_dummy_proposal_fails_with_insufficient_rights() {
@@ -619,8 +619,21 @@ fn veto_proposal_fails_with_insufficient_rights() {
         // last created proposal id equals current proposal count
         let proposal_id = <ProposalCount>::get();
 
-        let veto_proposal =
-            VetoProposalFixture::new(proposal_id).with_origin(RawOrigin::Signed(2));
+        let veto_proposal = VetoProposalFixture::new(proposal_id).with_origin(RawOrigin::Signed(2));
         veto_proposal.veto_and_assert(Err("RequireRootOrigin"));
+    });
+}
+
+#[test]
+fn create_proposal_event_emitted() {
+    initial_test_ext().execute_with(|| {
+        let dummy_proposal = DummyProposalFixture::default();
+        dummy_proposal.create_proposal_and_assert(Ok(()));
+
+        assert_eq!(System::events(), vec![EventRecord {
+            phase: Phase::ApplyExtrinsic(0),
+            event: TestEvent::engine(RawEvent::ProposalCreated(1, 1)),
+            topics: vec![],
+        }]);
     });
 }

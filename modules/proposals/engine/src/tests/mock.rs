@@ -11,7 +11,7 @@ pub use runtime_primitives::{
 };
 
 use crate::VotersParameters;
-use srml_support::{impl_outer_dispatch, impl_outer_origin, parameter_types};
+use srml_support::{impl_outer_dispatch, impl_outer_event, impl_outer_origin, parameter_types};
 
 impl_outer_origin! {
     pub enum Origin for Test {}
@@ -34,14 +34,19 @@ impl_outer_dispatch! {
     }
 }
 
-impl Default for Call {
-    fn default() -> Self {
-        panic!("shouldn't call default for Call");
-        //     Call::Proposals(<super::Module<Test>>::Call::execute_proposal(Origin::signed(1)))
+mod engine {
+    pub use crate::Event;
+}
+
+impl_outer_event! {
+    pub enum TestEvent for Test {
+        balances<T>, engine<T>,
     }
 }
 
 impl crate::Trait for Test {
+    type Event = TestEvent;
+
     type ProposalOrigin = system::EnsureSigned<Self::AccountId>;
 
     type VoteOrigin = system::EnsureSigned<Self::AccountId>;
@@ -67,7 +72,7 @@ impl system::Trait for Test {
     type AccountId = u64;
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
-    type Event = ();
+    type Event = TestEvent;
     type BlockHashCount = BlockHashCount;
     type MaximumBlockWeight = MaximumBlockWeight;
     type MaximumBlockLength = MaximumBlockLength;
@@ -97,8 +102,8 @@ impl balances::Trait for Test {
     type OnFreeBalanceZero = ();
     /// What to do if a new account is created.
     type OnNewAccount = ();
-    /// The ubiquitous event type.
-    type Event = ();
+
+    type Event = TestEvent;
 
     type DustRemoval = ();
     type TransferPayment = ();
@@ -127,7 +132,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 use rstd::convert::TryFrom;
 use rstd::prelude::*;
 
-use srml_support::{dispatch};
+use srml_support::dispatch;
 
 use crate::{ProposalCodeDecoder, ProposalExecutable};
 
@@ -203,4 +208,3 @@ impl FaultyExecutable {
         ProposalType::Faulty.into()
     }
 }
-

@@ -13,20 +13,18 @@
 
 pub use proposal_types::{ProposalType, TextProposalExecutable};
 
+mod proposal_types;
 #[cfg(test)]
 mod tests;
-mod proposal_types;
 
-
-use proposal_engine::*;
-use rstd::vec::Vec;
 use codec::Encode;
+use proposal_engine::*;
 use rstd::clone::Clone;
-use srml_support::{decl_module, print};
+use rstd::vec::Vec;
+use srml_support::decl_module;
 
 /// 'Proposals codex' substrate module Trait
 pub trait Trait: system::Trait + proposal_engine::Trait {}
-
 
 decl_module! {
     /// 'Proposal codex' substrate module
@@ -55,4 +53,3 @@ decl_module! {
         }
     }
 }
-

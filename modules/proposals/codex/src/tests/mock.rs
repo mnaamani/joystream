@@ -36,6 +36,8 @@ impl_outer_dispatch! {
 }
 
 impl proposal_engine::Trait for Test {
+    type Event = ();
+
     type ProposalOrigin = system::EnsureSigned<Self::AccountId>;
 
     type VoteOrigin = system::EnsureSigned<Self::AccountId>;
