@@ -276,21 +276,26 @@ impl transaction_payment::Trait for Runtime {
     type FeeMultiplierUpdate = (); // FeeMultiplierUpdateHandler;
 }
 
-impl Default for Call {
-    fn default() -> Self {
-        panic!("shouldn't call default for Call");
-    }
-}
+impl proposals_codex::Trait for Runtime {}
 
-impl proposals_v2::engine::Trait for Runtime {
-    type ProposalCode = Call;
+impl proposals_engine::Trait for Runtime {
+    type Event = Event;
 
-    type ProposalOrigin = system::EnsureRoot<Self::AccountId>;
+    type ProposalOrigin = system::EnsureSigned<Self::AccountId>;
 
     type VoteOrigin = system::EnsureSigned<Self::AccountId>;
+
+    type TotalVotersCounter = MockVotersParameters;
+
+    type ProposalCodeDecoder = proposals_codex::ProposalType;
 }
 
-impl proposals_v2::codex::Trait for Runtime {}
+pub struct MockVotersParameters;
+impl proposals_engine::VotersParameters for MockVotersParameters {
+    fn total_voters_count() -> u32 {
+        4
+    }
+}
 
 
 impl sudo::Trait for Runtime {
@@ -435,7 +440,6 @@ use roles::actors;
 use service_discovery::discovery;
 use stake;
 
-use proposals_v2::{ codex};
 
 /// Alias for ContentId, used in various places.
 pub type ContentId = primitives::H256;
@@ -784,7 +788,8 @@ construct_runtime!(
         Sudo: sudo,
         // Joystream
         Proposals: proposals::{Module, Call, Storage, Event<T>, Config<T>},
-        Proposals2: codex::{Module, Call, Storage},
+        ProposalsCodex: proposals_codex::{Module, Call},
+        ProposalsEngine: proposals_engine::{Module, Call, Storage, Config, Event<T>},
         CouncilElection: election::{Module, Call, Storage, Event<T>, Config<T>},
         Council: council::{Module, Call, Storage, Event<T>, Config<T>},
         Memo: memo::{Module, Call, Storage, Event<T>},
