@@ -22,14 +22,11 @@ use proposal_engine::*;
 use rstd::vec::Vec;
 use codec::Encode;
 use rstd::clone::Clone;
-use srml_support::{decl_module, decl_storage};
+use srml_support::{decl_module, print};
 
 /// 'Proposals codex' substrate module Trait
 pub trait Trait: system::Trait + proposal_engine::Trait {}
 
-decl_storage! {
-    trait Store for Module<T: Trait> as ProposalCodex {}
-}
 
 decl_module! {
     /// 'Proposal codex' substrate module

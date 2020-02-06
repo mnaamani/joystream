@@ -54,7 +54,7 @@ pub trait Trait: system::Trait + timestamp::Trait {
 
 // Storage for the proposals module
 decl_storage! {
-    trait Store for Module<T: Trait> as Proposals {
+    trait Store for Module<T: Trait> as ProposalsEngine{
         /// Map proposal by its id.
         pub Proposals get(fn proposals): map u32 => Proposal<T::BlockNumber, T::AccountId>;
 
