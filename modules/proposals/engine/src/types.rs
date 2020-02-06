@@ -37,7 +37,7 @@ pub enum ProposalStatus {
     },
 
     /// Proposal was withdrawn by its proposer.
-    Cancelled,
+    Canceled,
 
     /// Proposal was vetoed by root.
     Vetoed,

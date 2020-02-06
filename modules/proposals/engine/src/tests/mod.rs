@@ -164,6 +164,22 @@ impl VoteGenerator {
     }
 }
 
+struct EventFixture;
+impl EventFixture {
+    fn assert_events(expected_raw_events: Vec<RawEvent<u64>>) {
+        let expected_events = expected_raw_events
+            .iter()
+            .map(|ev| EventRecord {
+                phase: Phase::ApplyExtrinsic(0),
+                event: TestEvent::engine(ev.clone()),
+                topics: vec![],
+            })
+            .collect::<Vec<EventRecord<_, _>>>();
+
+        assert_eq!(System::events(), expected_events);
+    }
+}
+
 // Recommendation from Parity on testing on_finalize
 // https://substrate.dev/docs/en/next/development/module/tests
 fn run_to_block(n: u64) {
@@ -506,7 +522,7 @@ fn cancel_proposal_succeeds() {
                 parameters,
                 proposer_id: 1,
                 created: 1,
-                status: ProposalStatus::Cancelled,
+                status: ProposalStatus::Canceled,
                 title: b"title".to_vec(),
                 body: b"body".to_vec(),
             }
@@ -630,10 +646,65 @@ fn create_proposal_event_emitted() {
         let dummy_proposal = DummyProposalFixture::default();
         dummy_proposal.create_proposal_and_assert(Ok(()));
 
-        assert_eq!(System::events(), vec![EventRecord {
-            phase: Phase::ApplyExtrinsic(0),
-            event: TestEvent::engine(RawEvent::ProposalCreated(1, 1)),
-            topics: vec![],
-        }]);
+        EventFixture::assert_events(vec![RawEvent::ProposalCreated(1, 1)]);
+    });
+}
+
+#[test]
+fn veto_proposal_event_emitted() {
+    initial_test_ext().execute_with(|| {
+        let dummy_proposal = DummyProposalFixture::default();
+        dummy_proposal.create_proposal_and_assert(Ok(()));
+
+        // last created proposal id equals current proposal count
+        let proposal_id = <ProposalCount>::get();
+
+        let veto_proposal = VetoProposalFixture::new(proposal_id);
+        veto_proposal.veto_and_assert(Ok(()));
+
+        EventFixture::assert_events(vec![
+            RawEvent::ProposalCreated(1, 1),
+            RawEvent::ProposalStatusUpdated(1, ProposalStatus::Vetoed),
+            RawEvent::ProposalVetoed(1),
+        ]);
+    });
+}
+
+#[test]
+fn cancel_proposal_event_emitted() {
+    initial_test_ext().execute_with(|| {
+        let dummy_proposal = DummyProposalFixture::default();
+        dummy_proposal.create_proposal_and_assert(Ok(()));
+
+        // last created proposal id equals current proposal count
+        let proposal_id = <ProposalCount>::get();
+
+        let cancel_proposal = CancelProposalFixture::new(proposal_id);
+        cancel_proposal.cancel_and_assert(Ok(()));
+
+        EventFixture::assert_events(vec![
+            RawEvent::ProposalCreated(1, 1),
+            RawEvent::ProposalStatusUpdated(1, ProposalStatus::Canceled),
+            RawEvent::ProposalCanceled(1, 1),
+        ]);
+    });
+}
+
+#[test]
+fn vote_proposal_event_emitted() {
+    initial_test_ext().execute_with(|| {
+        let dummy_proposal = DummyProposalFixture::default();
+        dummy_proposal.create_proposal_and_assert(Ok(()));
+
+        // last created proposal id equals current proposal count
+        let proposal_id = <ProposalCount>::get();
+
+        let mut vote_generator = VoteGenerator::new(proposal_id);
+        vote_generator.vote_and_assert_ok(VoteKind::Approve);
+
+        EventFixture::assert_events(vec![
+            RawEvent::ProposalCreated(1, 1),
+            RawEvent::Voted(1,1, VoteKind::Approve),
+        ]);
     });
 }

@@ -61,9 +61,33 @@ decl_event!(
     {
     	/// Emits on proposal creation.
         /// Params:
-        /// - Account id of a proposer.
-        /// - Id of a newly created proposal after it was saved in storage.
+        /// * Account id of a proposer.
+        /// * Id of a newly created proposal after it was saved in storage.
         ProposalCreated(AccountId, u32),
+
+        /// Emits on proposal cancellation.
+        /// Params:
+        /// * Account id of a proposer.
+        /// * Id of a cancelled proposal.
+        ProposalCanceled(AccountId, u32),
+
+        /// Emits on proposal veto.
+        /// Params:
+        /// * Id of a vetoed proposal.
+        ProposalVetoed(u32),
+
+        /// Emits on proposal status change.
+        /// Params:
+        /// * Id of a updated proposal.
+        /// * New proposal status
+        ProposalStatusUpdated(u32, ProposalStatus),
+
+        /// Emits on voting for the proposal
+        /// Params:
+        /// * Voter - an account id of a voter.
+        /// * Id of a proposal.
+        /// * Kind of vote.
+        Voted(AccountId, u32, VoteKind),
     }
 );
 
@@ -129,13 +153,14 @@ decl_module! {
 
             let new_vote = Vote {
                 voter_id: voter_id.clone(),
-                vote_kind: vote,
+                vote_kind: vote.clone(),
             };
 
             // mutation
 
             <VotesByProposalId<T>>::mutate(proposal_id, |votes| votes.push(new_vote));
-            <VoteExistsByAccountByProposal<T>>::insert(voter_id, proposal_id, ());
+            <VoteExistsByAccountByProposal<T>>::insert(voter_id.clone(), proposal_id, ());
+            Self::deposit_event(RawEvent::Voted(voter_id, proposal_id, vote));
         }
 
         /// Cancel a proposal by its original proposer.
@@ -150,7 +175,8 @@ decl_module! {
 
             // mutation
 
-            Self::update_proposal_status(proposal_id, ProposalStatus::Cancelled);
+            Self::update_proposal_status(proposal_id, ProposalStatus::Canceled);
+            Self::deposit_event(RawEvent::ProposalCanceled(proposer_id, proposal_id));
         }
 
         /// Veto a proposal. Must be root.
@@ -165,6 +191,7 @@ decl_module! {
             // mutation
 
             Self::update_proposal_status(proposal_id, ProposalStatus::Vetoed);
+            Self::deposit_event(RawEvent::ProposalVetoed(proposal_id));
         }
 
         /// Block finalization. Perform voting period check and vote result tally.
@@ -289,6 +316,10 @@ impl<T: Trait> Module<T> {
     fn update_proposal_status(proposal_id: u32, new_status: ProposalStatus) {
         <Proposals<T>>::mutate(proposal_id, |p| p.status = new_status.clone());
         ActiveProposalIds::mutate(|ids| ids.remove(&proposal_id));
+        Self::deposit_event(RawEvent::ProposalStatusUpdated(
+            proposal_id,
+            new_status.clone(),
+        ));
 
         match new_status {
             ProposalStatus::Rejected | ProposalStatus::Expired => {
@@ -302,7 +333,7 @@ impl<T: Trait> Module<T> {
             ProposalStatus::Executed
             | ProposalStatus::Failed { .. }
             | ProposalStatus::Vetoed
-            | ProposalStatus::Cancelled => {} // do nothing
+            | ProposalStatus::Canceled => {} // do nothing
         }
     }
 
