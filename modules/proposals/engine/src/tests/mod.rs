@@ -405,7 +405,7 @@ fn rejected_tally_results_and_remove_proposal_id_from_active_succeeds() {
 }
 
 #[test]
-fn create_dummy_proposal_fails_with_invalid_body_or_title() {
+fn create_proposal_fails_with_invalid_body_or_title() {
     initial_test_ext().execute_with(|| {
         let mut dummy_proposal =
             DummyProposalFixture::default().with_title_and_body(Vec::new(), b"body".to_vec());
@@ -704,7 +704,39 @@ fn vote_proposal_event_emitted() {
 
         EventFixture::assert_events(vec![
             RawEvent::ProposalCreated(1, 1),
-            RawEvent::Voted(1,1, VoteKind::Approve),
+            RawEvent::Voted(1, 1, VoteKind::Approve),
         ]);
+    });
+}
+
+#[test]
+fn create_proposal_and_expire_it() {
+    initial_test_ext().execute_with(|| {
+        let parameters = ProposalParameters {
+            voting_period: 3,
+            approval_quorum_percentage: 49,
+        };
+
+        let dummy_proposal = DummyProposalFixture::default().with_parameters(parameters.clone());
+        dummy_proposal.create_proposal_and_assert(Ok(()));
+
+        run_to_block_and_finalize(8);
+
+        // last created proposal id equals current proposal count
+        let proposal_id = <ProposalCount>::get();
+        let proposal = <crate::Proposals<Test>>::get(proposal_id);
+
+        assert_eq!(
+            proposal,
+            Proposal {
+                proposal_type: 1,
+                parameters,
+                proposer_id: 1,
+                created: 1,
+                status: ProposalStatus::Expired,
+                title: b"title".to_vec(),
+                body: b"body".to_vec(),
+            }
+        )
     });
 }

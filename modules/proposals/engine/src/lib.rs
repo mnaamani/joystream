@@ -316,6 +316,7 @@ impl<T: Trait> Module<T> {
     fn update_proposal_status(proposal_id: u32, new_status: ProposalStatus) {
         <Proposals<T>>::mutate(proposal_id, |p| p.status = new_status.clone());
         ActiveProposalIds::mutate(|ids| ids.remove(&proposal_id));
+
         Self::deposit_event(RawEvent::ProposalStatusUpdated(
             proposal_id,
             new_status.clone(),
