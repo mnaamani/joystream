@@ -47,7 +47,9 @@ std = [
     'stake/std',
     'hiring/std',
     'versioned_store/std',
-    'versioned_store_permissions/std'
+    'versioned_store_permissions/std',
+    'proposals_engine/std',
+    'proposals_codex/std',
 ]
 
 [dependencies.babe]
@@ -282,7 +284,6 @@ rev = '0516efe9230da112bc095e28f34a3715c2e03ca8'
 
 [dependencies.hiring]
 default_features = false
-git = 'https://github.com/Joystream/substrate-hiring-module'
 package = 'substrate-hiring-module'
 rev = 'b400e3008c98989da7b310c71b7d6d4e4dca34e4'
 
@@ -297,3 +298,13 @@ default_features = false
 package = 'substrate-versioned-store-permissions-module'
 git = 'https://github.com/joystream/substrate-versioned-store-permissions-module'
 rev = '816b796b1b72bba05eebe128cdaa5e18611ac3ae'
+
+[dependencies.proposals_engine]
+package = 'substrate-proposals-engine-module'
+default_features = false
+path = './modules/proposals/engine'
+
+[dependencies.proposals_codex]
+package = 'substrate-proposals-codex-module'
+default_features = false
+path = './modules/proposals/codex'

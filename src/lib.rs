@@ -519,6 +519,7 @@ impl hiring::Trait for Runtime {
     type OpeningId = u64;
     type ApplicationId = u64;
     type ApplicationDeactivatedHandler = (); // TODO - what needs to happen?
+    type StakeHandlerProvider = hiring::Module<Self>;
 }
 
 impl minting::Trait for Runtime {
@@ -619,9 +620,9 @@ impl currency::GovernanceCurrency for Runtime {
     type Currency = balances::Module<Self>;
 }
 
-impl governance::proposals::Trait for Runtime {
-    type Event = Event;
-}
+//impl governance::proposals::Trait for Runtime {
+//    type Event = Event;
+//}
 
 impl governance::election::Trait for Runtime {
     type Event = Event;
@@ -787,7 +788,7 @@ construct_runtime!(
         RandomnessCollectiveFlip: randomness_collective_flip::{Module, Call, Storage},
         Sudo: sudo,
         // Joystream
-        Proposals: proposals::{Module, Call, Storage, Event<T>, Config<T>},
+//        Proposals: proposals::{Module, Call, Storage, Event<T>, Config<T>},
         ProposalsCodex: proposals_codex::{Module, Call},
         ProposalsEngine: proposals_engine::{Module, Call, Storage, Config, Event<T>},
         CouncilElection: election::{Module, Call, Storage, Event<T>, Config<T>},
