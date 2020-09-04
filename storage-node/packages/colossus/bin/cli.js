@@ -68,14 +68,7 @@ const cli = meow(
     $ colossus [command] [arguments]
 
   Commands:
-    server        Runs a production server instance. (discovery and storage services)
-                  This is the default command if not specified.
-    discovery     Run the discovery service only.
-
-  Arguments (required for server. Ignored if running server with --dev option):
-    --provider-id ID, -i ID     StorageProviderId assigned to you in working group.
-    --key-file FILE             JSON key export file to use as the storage provider (role account).
-    --public-url=URL, -u URL    API Public URL to announce.
+    leacher         leacher node.
 
   Arguments (optional):
     --dev                   Runs server with developer settings.
@@ -89,36 +82,6 @@ const cli = meow(
 // All-important banner!
 function banner() {
   console.log(chalk.blue(figlet.textSync('joystream', 'Speed')))
-}
-
-function startExpressApp(app, port) {
-  const http = require('http')
-  const server = http.createServer(app)
-
-  return new Promise((resolve, reject) => {
-    server.on('error', reject)
-    server.on('close', (...args) => {
-      console.log('Server closed, shutting down...')
-      resolve(...args)
-    })
-    server.on('listening', () => {
-      console.log('API server started.', server.address())
-    })
-    server.listen(port, '::')
-    console.log('Starting API server...')
-  })
-}
-
-// Start app
-function startAllServices({ store, api, port }) {
-  const app = require('../lib/app')(PROJECT_ROOT, store, api)
-  return startExpressApp(app, port)
-}
-
-// Start discovery service app only
-function startDiscoveryService({ api, port }) {
-  const app = require('../lib/discovery')(PROJECT_ROOT, api)
-  return startExpressApp(app, port)
 }
 
 // Get an initialized storage instance
@@ -146,14 +109,6 @@ async function initApiProduction({ wsProvider, providerId, keyFile, passphrase }
   // Load key information
   const { RuntimeApi } = require('@joystream/storage-runtime-api')
 
-  if (!keyFile) {
-    throw new Error('Must specify a --key-file argument for running a storage node.')
-  }
-
-  if (providerId === undefined) {
-    throw new Error('Must specify a --provider-id argument for running a storage node')
-  }
-
   const api = await RuntimeApi.create({
     account_file: keyFile,
     passphrase,
@@ -161,141 +116,26 @@ async function initApiProduction({ wsProvider, providerId, keyFile, passphrase }
     storageProviderId: providerId,
   })
 
-  if (!api.identities.key) {
-    throw new Error('Failed to unlock storage provider account')
-  }
-
   await api.untilChainIsSynced()
 
-  if (!(await api.workers.isRoleAccountOfStorageProvider(api.storageProviderId, api.identities.key.address))) {
-    throw new Error('storage provider role account and storageProviderId are not associated with a worker')
-  }
-
   return api
 }
 
-async function initApiDevelopment() {
-  // Load key information
-  const { RuntimeApi } = require('@joystream/storage-runtime-api')
-
-  const wsProvider = 'ws://localhost:9944'
-
-  const api = await RuntimeApi.create({
-    provider_url: wsProvider,
-  })
-
-  const dev = require('../../cli/dist/commands/dev')
-
-  api.identities.useKeyPair(dev.roleKeyPair(api))
-
-  api.storageProviderId = await dev.check(api)
-
-  return api
-}
-
-function getServiceInformation(publicUrl) {
-  // For now assume we run all services on the same endpoint
-  return {
-    asset: {
-      version: 1, // spec version
-      endpoint: publicUrl,
-    },
-    discover: {
-      version: 1, // spec version
-      endpoint: publicUrl,
-    },
-  }
-}
-
-// TODO: instead of recursion use while/async-await and use promise/setTimout based sleep
-// or cleaner code with generators?
-async function announcePublicUrl(api, publicUrl) {
-  // re-announce in future
-  const reannounce = function (timeoutMs) {
-    setTimeout(announcePublicUrl, timeoutMs, api, publicUrl)
-  }
-
-  const chainIsSyncing = await api.chainIsSyncing()
-  if (chainIsSyncing) {
-    debug('Chain is syncing. Postponing announcing public url.')
-    return reannounce(10 * 60 * 1000)
-  }
-
-  const sufficientBalance = await api.providerHasMinimumBalance(1)
-  if (!sufficientBalance) {
-    debug('Provider role account does not have sufficient balance. Postponing announcing public url.')
-    return reannounce(10 * 60 * 1000)
-  }
-
-  debug('announcing public url')
-  const { publish } = require('@joystream/service-discovery')
-
-  try {
-    const serviceInformation = getServiceInformation(publicUrl)
-
-    const keyId = await publish.publish(serviceInformation)
-
-    await api.discovery.setAccountInfo(keyId)
-
-    debug('publishing complete, scheduling next update')
-
-    // >> sometimes after tx is finalized.. we are not reaching here!
-
-    // Reannounce before expiery. Here we are concerned primarily
-    // with keeping the account information refreshed and 'available' in
-    // the ipfs network. our record on chain is valid for 24hr
-    reannounce(50 * 60 * 1000) // in 50 minutes
-  } catch (err) {
-    debug(`announcing public url failed: ${err.stack}`)
-
-    // On failure retry sooner
-    debug(`announcing failed, retrying in: 2 minutes`)
-    reannounce(120 * 1000)
-  }
-}
-
-// Simple CLI commands
-let command = cli.input[0]
-if (!command) {
-  command = 'server'
-}
-
-async function startColossus({ api, publicUrl, port }) {
+async function startColossus({ api }) {
   // TODO: check valid url, and valid port number
   const store = getStorage(api)
   banner()
   const { startSyncing } = require('../lib/sync')
   startSyncing(api, { syncPeriod: SYNC_PERIOD_MS }, store)
-  announcePublicUrl(api, publicUrl)
-  return startAllServices({ store, api, port })
 }
 
 const commands = {
-  server: async () => {
-    let publicUrl, port, api
-
-    if (cli.flags.dev) {
-      const dev = require('../../cli/dist/commands/dev')
-      api = await initApiDevelopment()
-      port = dev.developmentPort()
-      publicUrl = `http://localhost:${port}/`
-    } else {
-      api = await initApiProduction(cli.flags)
-      publicUrl = cli.flags.publicUrl
-      port = cli.flags.port
-    }
-
-    return startColossus({ api, publicUrl, port })
-  },
-  discovery: async () => {
-    banner()
-    debug('Starting Joystream Discovery Service')
-    const { RuntimeApi } = require('@joystream/storage-runtime-api')
-    const wsProvider = cli.flags.wsProvider
-    const api = await RuntimeApi.create({ provider_url: wsProvider })
-    const port = cli.flags.port
-    await api.untilChainIsSynced()
-    await startDiscoveryService({ api, port })
+  leacher: async () => {
+    const api = await initApiProduction(cli.flags)
+    startColossus({ api })
+    await new Promise(function (resolve, reject) {
+      // do nothing
+    })
   },
 }
 
@@ -303,7 +143,7 @@ async function main() {
   // Simple CLI commands
   let command = cli.input[0]
   if (!command) {
-    command = 'server'
+    command = 'leacher'
   }
 
   if (Object.prototype.hasOwnProperty.call(commands, command)) {

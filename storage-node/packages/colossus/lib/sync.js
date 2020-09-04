@@ -26,14 +26,8 @@ async function syncCallback(api, storage) {
   // FIXME this isn't actually on chain yet, so we'll fake it.
   const knownContentIds = (await api.assets.getKnownContentIds()) || []
 
-  const roleAddress = api.identities.key.address
-  const providerId = api.storageProviderId
-
   // Iterate over all sync objects, and ensure they're synced.
   const allChecks = knownContentIds.map(async (contentId) => {
-    // eslint-disable-next-line prefer-const
-    let { relationship, relationshipId } = await api.assets.getStorageRelationshipAndId(providerId, contentId)
-
     // get the data object
     // make sure the data object was Accepted by the liaison,
     // don't just blindly attempt to fetch them
@@ -54,35 +48,9 @@ async function syncCallback(api, storage) {
       try {
         await storage.synchronize(contentId)
       } catch (err) {
-        // duplicate logging
-        // debug(err.message)
         return
       }
-      // why are we returning, if we synced the file
       return
-    }
-
-    if (!relationship) {
-      // create relationship
-      debug(`Creating new storage relationship for ${contentId.encode()}`)
-      try {
-        relationshipId = await api.assets.createStorageRelationship(roleAddress, providerId, contentId)
-        await api.assets.toggleStorageRelationshipReady(roleAddress, providerId, relationshipId, true)
-      } catch (err) {
-        debug(`Error creating new storage relationship ${contentId.encode()}: ${err.stack}`)
-        return
-      }
-    } else if (!relationship.ready) {
-      debug(`Updating storage relationship to ready for ${contentId.encode()}`)
-      // update to ready. (Why would there be a relationship set to ready: false?)
-      try {
-        await api.assets.toggleStorageRelationshipReady(roleAddress, providerId, relationshipId, true)
-      } catch (err) {
-        debug(`Error setting relationship ready ${contentId.encode()}: ${err.stack}`)
-      }
-    } else {
-      // we already have content and a ready relationship set. No need to do anything
-      // debug(`content already stored locally ${contentId.encode()}`);
     }
   })
 
@@ -96,17 +64,6 @@ async function syncPeriodic(api, flags, storage) {
     const chainIsSyncing = await api.chainIsSyncing()
     if (chainIsSyncing) {
       debug('Chain is syncing. Postponing sync run.')
-      return setTimeout(syncPeriodic, flags.syncPeriod, api, flags, storage)
-    }
-
-    const recommendedBalance = await api.providerHasMinimumBalance(300)
-    if (!recommendedBalance) {
-      debug('Warning: Provider role account is running low on balance.')
-    }
-
-    const sufficientBalance = await api.providerHasMinimumBalance(100)
-    if (!sufficientBalance) {
-      debug('Provider role account does not have sufficient balance. Postponing sync run!')
       return setTimeout(syncPeriodic, flags.syncPeriod, api, flags, storage)
     }
 
