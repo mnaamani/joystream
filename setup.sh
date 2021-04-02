@@ -28,8 +28,9 @@ source ~/.cargo/env
 rustup install nightly-2021-02-20
 rustup target add wasm32-unknown-unknown --toolchain nightly-2021-02-20
 
-rustup install 1.51.0
-rustup default 1.51.0
+# rustup install 1.50.0
+# rustup default 1.50.0
+rustup default nightly-2021-02-20
 
 rustup component add rustfmt clippy
 

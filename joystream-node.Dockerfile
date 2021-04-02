@@ -1,7 +1,8 @@
-FROM liuchong/rustup:1.51.0 AS rustup
-RUN rustup component add rustfmt clippy
-RUN rustup install nightly-2021-02-20 --force
+FROM liuchong/rustup:stable AS rustup
+RUN rustup install nightly-2021-02-20
+RUN rustup default nightly-2021-02-20
 RUN rustup target add wasm32-unknown-unknown --toolchain nightly-2021-02-20
+RUN rustup component add rustfmt clippy
 RUN apt-get update && \
   apt-get install -y curl git gcc xz-utils sudo pkg-config unzip clang llvm libc6-dev
 
