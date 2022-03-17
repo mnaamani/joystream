@@ -1,0 +1,20 @@
+name: kubernetes-cluster
+runtime: nodejs
+description: A Pulumi program to create a Kubernetes cluster on a cloud environment
+template:
+  config:
+    aws:profile:
+      default: joystream-user
+    aws:region:
+      default: us-east-1
+    platform:
+      description: Platform on which you want to deploy the Kubernetes cluster e.g. aws
+    instanceType:
+      description: Instance type to be deployed
+      default: t2.medium
+    numberOfAvailabilityZones:
+      description: Number of Availability Zones to be used for the cluster
+      default: 2
+    clusterName:
+      description: Name of the cluster stack
+      default: eksctl-joystream

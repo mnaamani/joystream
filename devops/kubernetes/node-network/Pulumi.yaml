@@ -3,13 +3,6 @@ runtime: nodejs
 description: Kubernetes IaC for Joystream RPC and Validator nodes
 template:
   config:
-    aws:profile:
-      default: joystream-user
-    aws:region:
-      default: us-east-1
-    isMinikube:
-      description: Whether you are deploying to minikube
-      default: false
     numberOfValidators:
       description: Number of validators as starting nodes
       default: 2
@@ -25,3 +18,9 @@ template:
     encryptionKey:
       description: Key to encrypt the 7z containing secrets with
       default: '1234'
+    clusterStackRef:
+      description: Pulumi stack name used to deploy Kubernetes cluster
+    kubeconfigFile:
+      description: Relative or absolute path to the Kubeconfig file of an already deployed K8 cluster
+    acmCertificateARN:
+      description: ARN of the Certificate registered in AWS ACM Certificate Manager
