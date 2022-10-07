@@ -76,7 +76,7 @@ use sp_runtime::{
     create_runtime_str,
     curve::PiecewiseLinear,
     generic, impl_opaque_keys,
-    traits::{BlakeTwo256, ConvertInto, IdentityLookup, OpaqueKeys},
+    traits::{BlakeTwo256, ConvertInto, IdentityLookup, OpaqueKeys, Zero},
     Perbill,
 };
 
@@ -113,6 +113,7 @@ use integration::proposals::{CouncilManager, ExtrinsicProposalEncoder};
 
 use common::working_group::{WorkingGroup, WorkingGroupBudgetHandler};
 use council::ReferendumConnection;
+use pallet_staking::EraPayout;
 use referendum::{CastVote, OptionResult};
 use staking_handler::{LockComparator, StakingManager};
 
@@ -537,6 +538,28 @@ pallet_staking_reward_curve::build! {
     );
 }
 
+pub struct NoInflationIfNoEras;
+impl EraPayout<Balance> for NoInflationIfNoEras {
+    fn era_payout(
+        total_staked: Balance,
+        total_issuance: Balance,
+        era_duration_millis: u64,
+    ) -> (Balance, Balance) {
+        let era_index = pallet_staking::Pallet::<Runtime>::current_era().unwrap_or_else(Zero::zero);
+
+        if era_index.is_zero() {
+            // PoA mode: no inflation.
+            (0, 0)
+        } else {
+            <pallet_staking::ConvertCurve<RewardCurve> as EraPayout<Balance>>::era_payout(
+                total_staked,
+                total_issuance,
+                era_duration_millis,
+            )
+        }
+    }
+}
+
 parameter_types! {
     pub const SessionsPerEra: sp_staking::SessionIndex = 6;
     pub const BondingDuration: sp_staking::EraIndex = BONDING_DURATION;
@@ -568,7 +591,9 @@ impl pallet_staking::Config for Runtime {
     type SlashDeferDuration = SlashDeferDuration;
     type SlashCancelOrigin = EnsureRoot<AccountId>;
     type SessionInterface = Self;
-    type EraPayout = pallet_staking::ConvertCurve<RewardCurve>;
+    // TODO (Mainnet): enable normal curve
+    // type EraPayout = pallet_staking::ConvertCurve<RewardCurve>;
+    type EraPayout = NoInflationIfNoEras;
     type NextNewSession = Session;
     type MaxNominatorRewardedPerValidator = MaxNominatorRewardedPerValidator;
     type OffendingValidatorsThreshold = OffendingValidatorsThreshold;
