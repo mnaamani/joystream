@@ -8,9 +8,8 @@ import {
   PalletMembershipBuyMembershipParameters as BuyMembershipParameters,
   PalletMembershipInviteMembershipParameters as InviteMembershipParameters,
   PalletMembershipGiftMembershipParameters as GiftMembershipParameters,
-  PalletMembershipCreateFoundingMemberParameters as CreateFoundingMemberParameters,
+  PalletMembershipCreateMemberParameters as CreateMemberParameters,
 } from '@polkadot/types/lookup'
-import { Bytes } from '@polkadot/types'
 import {
   MembershipMetadata,
   MemberRemarked,
@@ -32,11 +31,10 @@ import {
 import {
   Membership,
   MembershipEntryMethod,
-  MembershipSystemSnapshot,
   MemberMetadata,
   MembershipBoughtEvent,
   MembershipGiftedEvent,
-  FoundingMemberCreatedEvent,
+  MemberCreatedEvent,
   MemberProfileUpdatedEvent,
   MemberAccountsUpdatedEvent,
   MemberInvitedEvent,
@@ -53,7 +51,7 @@ import {
   MembershipEntryPaid,
   MembershipEntryInvited,
   MembershipEntryGifted,
-  MembershipEntryFoundingMemberCreated,
+  MembershipEntryMemberCreated,
   AvatarUri,
   WorkingGroup,
   MembershipExternalResource,
@@ -76,29 +74,6 @@ async function getMemberById(store: DatabaseManager, id: MemberId, relations: st
     throw new Error(`Member(${id}) not found`)
   }
   return member
-}
-
-async function getLatestMembershipSystemSnapshot(store: DatabaseManager): Promise<MembershipSystemSnapshot> {
-  const membershipSystem = await store.get(MembershipSystemSnapshot, {
-    order: { snapshotBlock: 'DESC' },
-  })
-  if (!membershipSystem) {
-    throw new Error(`Membership system snapshot not found! Forgot to run "yarn workspace query-node-root store:init"?`)
-  }
-  return membershipSystem
-}
-
-async function getOrCreateMembershipSnapshot({ store, event }: EventContext & StoreContext) {
-  const latestSnapshot = await getLatestMembershipSystemSnapshot(store)
-  const eventTime = new Date(event.blockTimestamp)
-  return latestSnapshot.snapshotBlock === event.blockNumber
-    ? latestSnapshot
-    : new MembershipSystemSnapshot({
-        ...latestSnapshot,
-        createdAt: eventTime,
-        id: undefined,
-        snapshotBlock: event.blockNumber,
-      })
 }
 
 async function saveMembershipExternalResources(
@@ -180,13 +155,10 @@ async function createNewMemberFromParams(
   event: SubstrateEvent,
   memberId: MemberId,
   entryMethod: typeof MembershipEntryMethod,
-  params:
-    | BuyMembershipParameters
-    | InviteMembershipParameters
-    | GiftMembershipParameters
-    | CreateFoundingMemberParameters
+  params: BuyMembershipParameters | InviteMembershipParameters | GiftMembershipParameters | CreateMemberParameters,
+  inviteCount: number,
+  isFoundingMember = false
 ): Promise<Membership> {
-  const { defaultInviteCount } = await getLatestMembershipSystemSnapshot(store)
   const { rootAccount, controllerAccount, handle, metadata: metadataBytes } = params
   const metadata = deserializeMetadata(MembershipMetadata, metadataBytes)
 
@@ -194,17 +166,15 @@ async function createNewMemberFromParams(
     id: memberId.toString(),
     rootAccount: rootAccount.toString(),
     controllerAccount: controllerAccount.toString(),
-    handle: ('unwrap' in handle ? handle.unwrap() : handle).toHuman()?.toString(),
+    handle: bytesToString('unwrap' in handle ? handle.unwrap() : handle),
     metadata: await saveMembershipMetadata(store, undefined, metadata),
     entry: entryMethod,
     referredBy:
       entryMethod.isTypeOf === 'MembershipEntryPaid' && (params as BuyMembershipParameters).referrerId.isSome
         ? new Membership({ id: (params as BuyMembershipParameters).referrerId.unwrap().toString() })
         : undefined,
-    isVerified: entryMethod.isTypeOf === 'MembershipEntryFoundingMemberCreated',
-    inviteCount: ['MembershipEntryPaid', 'MembershipEntryFoundingMemberCreated'].includes(entryMethod.isTypeOf)
-      ? defaultInviteCount
-      : 0,
+    isVerified: isFoundingMember,
+    inviteCount,
     boundAccounts: [],
     invitees: [],
     referredMembers: [],
@@ -212,7 +182,7 @@ async function createNewMemberFromParams(
       entryMethod.isTypeOf === 'MembershipEntryInvited'
         ? new Membership({ id: (params as InviteMembershipParameters).invitingMemberId.toString() })
         : undefined,
-    isFoundingMember: entryMethod.isTypeOf === 'MembershipEntryFoundingMemberCreated',
+    isFoundingMember,
     isCouncilMember: false,
 
     councilCandidacies: [],
@@ -277,10 +247,17 @@ export async function createNewMember(
 }
 
 export async function members_MembershipBought({ store, event }: EventContext & StoreContext): Promise<void> {
-  const [memberId, buyMembershipParameters] = new Members.MembershipBoughtEvent(event).params
+  const [memberId, buyMembershipParameters, inviteCount] = new Members.MembershipBoughtEvent(event).params
 
   const memberEntry = new MembershipEntryPaid()
-  const member = await createNewMemberFromParams(store, event, memberId, memberEntry, buyMembershipParameters)
+  const member = await createNewMemberFromParams(
+    store,
+    event,
+    memberId,
+    memberEntry,
+    buyMembershipParameters,
+    inviteCount.toNumber()
+  )
 
   const membershipBoughtEvent = new MembershipBoughtEvent({
     ...genericEventFields(event),
@@ -303,7 +280,7 @@ export async function members_MembershipGifted({ store, event }: EventContext & 
   const [memberId, giftMembershipParameters] = new Members.MembershipGiftedEvent(event).params
 
   const memberEntry = new MembershipEntryGifted()
-  const member = await createNewMemberFromParams(store, event, memberId, memberEntry, giftMembershipParameters)
+  const member = await createNewMemberFromParams(store, event, memberId, memberEntry, giftMembershipParameters, 0)
 
   const membershipGiftedEvent = new MembershipGiftedEvent({
     ...genericEventFields(event),
@@ -321,13 +298,21 @@ export async function members_MembershipGifted({ store, event }: EventContext & 
   await store.save<Membership>(member)
 }
 
-export async function members_FoundingMemberCreated({ store, event }: EventContext & StoreContext): Promise<void> {
-  const [memberId, foundingMemberParameters] = new Members.FoundingMemberCreatedEvent(event).params
+export async function members_MemberCreated({ store, event }: EventContext & StoreContext): Promise<void> {
+  const [memberId, memberParameters, inviteCount] = new Members.MemberCreatedEvent(event).params
 
-  const memberEntry = new MembershipEntryFoundingMemberCreated()
-  const member = await createNewMemberFromParams(store, event, memberId, memberEntry, foundingMemberParameters)
+  const memberEntry = new MembershipEntryMemberCreated()
+  const member = await createNewMemberFromParams(
+    store,
+    event,
+    memberId,
+    memberEntry,
+    memberParameters,
+    inviteCount.toNumber(),
+    memberParameters.isFoundingMember.isTrue
+  )
 
-  const foundingMemberCreatedEvent = new FoundingMemberCreatedEvent({
+  const memberCreatedEvent = new MemberCreatedEvent({
     ...genericEventFields(event),
     newMember: member,
 
@@ -335,12 +320,13 @@ export async function members_FoundingMemberCreated({ store, event }: EventConte
     rootAccount: member.rootAccount,
     handle: member.handle,
     metadata: await saveMembershipMetadata(store, member),
+    isFoundingMember: memberParameters.isFoundingMember.isTrue,
   })
 
-  await store.save<FoundingMemberCreatedEvent>(foundingMemberCreatedEvent)
+  await store.save<MemberCreatedEvent>(memberCreatedEvent)
 
   // Update the other side of event<->membership relation
-  memberEntry.foundingMemberCreatedEventId = foundingMemberCreatedEvent.id
+  memberEntry.memberCreatedEventId = memberCreatedEvent.id
   await store.save<Membership>(member)
 }
 
@@ -465,7 +451,14 @@ export async function members_InvitesTransferred({ store, event }: EventContext 
 export async function members_MemberInvited({ store, event }: EventContext & StoreContext): Promise<void> {
   const [memberId, inviteMembershipParameters] = new Members.MemberInvitedEvent(event).params
   const entryMethod = new MembershipEntryInvited()
-  const invitedMember = await createNewMemberFromParams(store, event, memberId, entryMethod, inviteMembershipParameters)
+  const invitedMember = await createNewMemberFromParams(
+    store,
+    event,
+    memberId,
+    entryMethod,
+    inviteMembershipParameters,
+    0
+  )
 
   // Decrease invite count of inviting member
   const invitingMember = await getMemberById(store, inviteMembershipParameters.invitingMemberId)
@@ -541,11 +534,6 @@ export async function members_StakingAccountRemoved({ store, event }: EventConte
 export async function members_InitialInvitationCountUpdated(ctx: EventContext & StoreContext): Promise<void> {
   const { event, store } = ctx
   const [newDefaultInviteCount] = new Members.InitialInvitationCountUpdatedEvent(event).params
-  const membershipSystemSnapshot = await getOrCreateMembershipSnapshot(ctx)
-
-  membershipSystemSnapshot.defaultInviteCount = newDefaultInviteCount.toNumber()
-
-  await store.save<MembershipSystemSnapshot>(membershipSystemSnapshot)
 
   const initialInvitationCountUpdatedEvent = new InitialInvitationCountUpdatedEvent({
     ...genericEventFields(event),
@@ -558,11 +546,6 @@ export async function members_InitialInvitationCountUpdated(ctx: EventContext & 
 export async function members_MembershipPriceUpdated(ctx: EventContext & StoreContext): Promise<void> {
   const { event, store } = ctx
   const [newMembershipPrice] = new Members.MembershipPriceUpdatedEvent(event).params
-  const membershipSystemSnapshot = await getOrCreateMembershipSnapshot(ctx)
-
-  membershipSystemSnapshot.membershipPrice = newMembershipPrice
-
-  await store.save<MembershipSystemSnapshot>(membershipSystemSnapshot)
 
   const membershipPriceUpdatedEvent = new MembershipPriceUpdatedEvent({
     ...genericEventFields(event),
@@ -575,11 +558,6 @@ export async function members_MembershipPriceUpdated(ctx: EventContext & StoreCo
 export async function members_ReferralCutUpdated(ctx: EventContext & StoreContext): Promise<void> {
   const { event, store } = ctx
   const [newReferralCut] = new Members.ReferralCutUpdatedEvent(event).params
-  const membershipSystemSnapshot = await getOrCreateMembershipSnapshot(ctx)
-
-  membershipSystemSnapshot.referralCut = newReferralCut.toNumber()
-
-  await store.save<MembershipSystemSnapshot>(membershipSystemSnapshot)
 
   const referralCutUpdatedEvent = new ReferralCutUpdatedEvent({
     ...genericEventFields(event),
@@ -592,11 +570,6 @@ export async function members_ReferralCutUpdated(ctx: EventContext & StoreContex
 export async function members_InitialInvitationBalanceUpdated(ctx: EventContext & StoreContext): Promise<void> {
   const { event, store } = ctx
   const [newInvitedInitialBalance] = new Members.InitialInvitationBalanceUpdatedEvent(event).params
-  const membershipSystemSnapshot = await getOrCreateMembershipSnapshot(ctx)
-
-  membershipSystemSnapshot.invitedInitialBalance = newInvitedInitialBalance
-
-  await store.save<MembershipSystemSnapshot>(membershipSystemSnapshot)
 
   const initialInvitationBalanceUpdatedEvent = new InitialInvitationBalanceUpdatedEvent({
     ...genericEventFields(event),

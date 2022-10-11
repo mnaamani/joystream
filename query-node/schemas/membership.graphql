@@ -67,10 +67,10 @@ type MembershipEntryGifted @variant {
   membershipGiftedEvent: MembershipGiftedEvent
 }
 
-type MembershipEntryFoundingMemberCreated @variant {
-  "The event the member was gifted in"
-  # Must be optional because of member.entry <=> foundingMemberCreatedEvent.newMember cross relationship
-  foundingMemberCreatedEvent: FoundingMemberCreatedEvent
+type MembershipEntryMemberCreated @variant {
+  "The event the member was created in"
+  # Must be optional because of member.entry <=> memberCreatedEvent.newMember cross relationship
+  memberCreatedEvent: MemberCreatedEvent
 }
 
 type MembershipEntryGenesis @variant {
@@ -81,7 +81,7 @@ union MembershipEntryMethod =
     MembershipEntryPaid
   | MembershipEntryInvited
   | MembershipEntryGifted
-  | MembershipEntryFoundingMemberCreated
+  | MembershipEntryMemberCreated
   | MembershipEntryGenesis
 
 "Stored information about a registered user"
@@ -191,21 +191,4 @@ type Membership @entity {
   # Required for BidMadeCompletingAuctionEvent->members Many-to-Many relationship
   "Member as bidder in BidMadeCompletingAuctionEvent/s."
   memberBidMadeCompletingAuctionEvents: [BidMadeCompletingAuctionEvent!] @derivedFrom(field: "bidders")
-}
-
-type MembershipSystemSnapshot @entity {
-  "The snapshot block number"
-  snapshotBlock: Int!
-
-  "Initial invitation count of a new member."
-  defaultInviteCount: Int!
-
-  "Current price to buy a membership."
-  membershipPrice: BigInt!
-
-  "Percentage of tokens diverted to invitor."
-  referralCut: Int!
-
-  "The initial, locked, balance credited to controller account of invitee."
-  invitedInitialBalance: BigInt!
 }

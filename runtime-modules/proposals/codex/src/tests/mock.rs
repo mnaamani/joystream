@@ -292,6 +292,7 @@ parameter_types! {
     pub const ReferralCutMaximumPercent: u8 = 50;
     pub const StakingCandidateLockId: [u8; 8] = [3; 8];
     pub const CandidateStake: u64 = 100;
+    pub const DefaultMemberInvitesCount: u32 = 2;
 }
 
 impl common::membership::MembershipTypes for Test {
@@ -310,6 +311,7 @@ impl membership::Config for Test {
     type StakingCandidateStakingHandler =
         staking_handler::StakingManager<Self, StakingCandidateLockId>;
     type CandidateStake = CandidateStake;
+    type DefaultMemberInvitesCount = DefaultMemberInvitesCount;
 }
 
 pub struct Wg;
@@ -386,6 +388,7 @@ parameter_types! {
     pub const DescriptionMaxLength: u32 = 10000;
     pub const MaxActiveProposalLimit: u32 = 100;
     pub const LockId: LockIdentifier = [2; 8];
+    pub const DispatchableCallCodeMaxLen: u32 = 1024 * 1024;
 }
 
 impl proposals_engine::Config for Test {
@@ -404,6 +407,7 @@ impl proposals_engine::Config for Test {
     type ProposalObserver = crate::Module<Test>;
     type WeightInfo = ();
     type StakingAccountValidator = ();
+    type DispatchableCallCodeMaxLen = DispatchableCallCodeMaxLen;
 }
 
 pub const STAKING_ACCOUNT_ID_NOT_BOUND_TO_MEMBER: u64 = 222;
@@ -662,10 +666,10 @@ impl crate::Config for Test {
 }
 
 parameter_types! {
-    pub const MinNumberOfExtraCandidates: u64 = 1;
+    pub const MinNumberOfExtraCandidates: u32 = 1;
     pub const AnnouncingPeriodDuration: u64 = 15;
     pub const IdlePeriodDuration: u64 = 27;
-    pub const CouncilSize: u64 = 3;
+    pub const CouncilSize: u32 = 3;
     pub const MinCandidateStake: u64 = 11000;
     pub const CandidacyLockId: LockIdentifier = *b"council1";
     pub const CouncilorLockId: LockIdentifier = *b"council2";
@@ -712,7 +716,7 @@ parameter_types! {
     pub const MinimumVotingStake: u64 = 10000;
     pub const MaxSaltLength: u64 = 32; // use some multiple of 8 for ez testing
     pub const VotingLockId: LockIdentifier = *b"referend";
-    pub const MaxWinnerTargetCount: u64 = 10;
+    pub const MaxWinnerTargetCount: u32 = 10;
 }
 
 impl referendum::Config<ReferendumInstance> for Test {

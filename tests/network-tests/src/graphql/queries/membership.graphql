@@ -37,8 +37,8 @@ fragment MembershipFields on Membership {
         id
       }
     }
-    ... on MembershipEntryFoundingMemberCreated {
-      foundingMemberCreatedEvent {
+    ... on MembershipEntryMemberCreated {
+      memberCreatedEvent {
         id
       }
     }
@@ -64,26 +64,5 @@ query getMemberById($id: ID!) {
 query getMembersByIds($ids: [ID!]) {
   memberships(where: { id_in: $ids }) {
     ...MembershipFields
-  }
-}
-
-fragment MembershipSystemSnapshotFields on MembershipSystemSnapshot {
-  createdAt
-  snapshotBlock
-  referralCut
-  invitedInitialBalance
-  defaultInviteCount
-  membershipPrice
-}
-
-query getMembershipSystemSnapshotAt($time: DateTime!) {
-  membershipSystemSnapshots(where: { createdAt_eq: $time }, orderBy: createdAt_DESC, limit: 1) {
-    ...MembershipSystemSnapshotFields
-  }
-}
-
-query getMembershipSystemSnapshotBefore($time: DateTime!) {
-  membershipSystemSnapshots(where: { createdAt_lt: $time }, orderBy: createdAt_DESC, limit: 1) {
-    ...MembershipSystemSnapshotFields
   }
 }

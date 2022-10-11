@@ -262,9 +262,7 @@ fn elect_council<
         });
         voters.push(member_funded_account::<T>(
             "voter",
-            (council_size + number_of_extra_candidates + i as u64)
-                .try_into()
-                .unwrap(),
+            council_size + number_of_extra_candidates + i as u32,
         ));
     }
 
@@ -317,12 +315,7 @@ fn elect_council<
         council.iter().map(|c| c.member_id).collect::<Vec<_>>()
     );
 
-    (
-        council,
-        (2 * (council_size + number_of_extra_candidates))
-            .try_into()
-            .unwrap(),
-    )
+    (council, (2 * (council_size + number_of_extra_candidates)))
 }
 
 fn create_multiple_finalized_proposals<
@@ -375,7 +368,7 @@ benchmarks! {
     vote {
         let i in 0 .. MAX_BYTES;
 
-        let (council, last_id) = elect_council::<T>(1);
+        let (council, last_id) = elect_council::<T>(0);
         let voter = council[0].clone();
         let (account_voter_id, member_voter_id) = (voter.account_id, voter.member_id);
         let (_, _, proposal_id) = create_proposal::<T>(last_id + 1, 1, 0, 0);
@@ -639,7 +632,7 @@ benchmarks! {
             i,
             0,
             VoteKind::Reject,
-            max(T::CouncilSize::get().try_into().unwrap(), 1),
+            max(T::CouncilSize::get(), 1),
             0,
         );
     }: { ProposalsEngine::<T>::on_initialize(System::<T>::block_number()) }
@@ -683,7 +676,7 @@ benchmarks! {
             i,
             0,
             VoteKind::Slash,
-            max(T::CouncilSize::get().try_into().unwrap(), 1),
+            max(T::CouncilSize::get(), 1),
             0,
         );
     }: { ProposalsEngine::<T>::on_initialize(System::<T>::block_number()) }
@@ -732,7 +725,7 @@ benchmarks! {
             i,
             0,
             VoteKind::Approve,
-            max(T::CouncilSize::get().try_into().unwrap(), 1),
+            max(T::CouncilSize::get(), 1),
             10,
         );
     }: { ProposalsEngine::<T>::cancel_active_and_pending_proposals() }

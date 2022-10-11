@@ -44,6 +44,22 @@
 // Ensure we're `no_std` when compiling for Wasm.
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::unused_unit)]
+#![cfg_attr(
+    not(any(test, feature = "runtime-benchmarks")),
+    deny(clippy::panic),
+    deny(clippy::panic_in_result_fn),
+    deny(clippy::unwrap_used),
+    deny(clippy::expect_used),
+    deny(clippy::indexing_slicing),
+    deny(clippy::integer_arithmetic),
+    deny(clippy::match_on_vec_items),
+    deny(clippy::unreachable)
+)]
+
+#[cfg(not(any(test, feature = "runtime-benchmarks")))]
+#[allow(unused_imports)]
+#[macro_use]
+extern crate common;
 
 pub mod benchmarking;
 #[cfg(test)]
@@ -51,7 +67,7 @@ mod tests;
 pub mod weights;
 pub use weights::WeightInfo;
 
-use codec::{Decode, Encode};
+use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::dispatch::DispatchError;
 use frame_support::traits::{Currency, ExistenceRequirement, Get, LockIdentifier, WithdrawReasons};
 pub use frame_support::weights::Weight;
@@ -125,18 +141,20 @@ pub trait Config:
 
     /// Stake needed to candidate as staking account.
     type CandidateStake: Get<BalanceOf<Self>>;
+
+    /// Default number of invites a paid membership recieves.
+    type DefaultMemberInvitesCount: Get<u32>;
 }
 
-pub(crate) const DEFAULT_MEMBER_INVITES_COUNT: u32 = 5;
-
 /// Public membership profile alias.
-pub type Membership<T> = MembershipObject<<T as frame_system::Config>::AccountId>;
+pub type Membership<T> =
+    MembershipObject<<T as frame_system::Config>::AccountId, <T as frame_system::Config>::Hash>;
 
-#[derive(Encode, Decode, PartialEq, Debug, Clone, TypeInfo)]
+#[derive(Encode, Decode, PartialEq, Debug, Clone, TypeInfo, MaxEncodedLen)]
 /// Stored information about a registered user.
-pub struct MembershipObject<AccountId: Ord> {
+pub struct MembershipObject<AccountId: Ord, Hash> {
     /// The hash of the handle chosen by member.
-    pub handle_hash: Vec<u8>,
+    pub handle_hash: Hash,
 
     /// Member's root account id. Only the root account is permitted to set a new root account
     /// and update the controller account. Other modules may only allow certain actions if
@@ -158,7 +176,7 @@ pub struct MembershipObject<AccountId: Ord> {
 }
 
 // Contain staking account to member binding and its confirmation.
-#[derive(Encode, Decode, Default, Debug, PartialEq, TypeInfo)]
+#[derive(Encode, Decode, Default, Debug, PartialEq, TypeInfo, MaxEncodedLen)]
 pub struct StakingAccountMemberBinding<MemberId> {
     /// Member id that we bind account to.
     pub member_id: MemberId,
@@ -234,9 +252,9 @@ pub struct InviteMembershipParameters<AccountId, MemberId> {
     pub metadata: Vec<u8>,
 }
 
-/// Parameters for the create_founding_member extrinsic.
+/// Parameters for the create_member extrinsic.
 #[derive(Encode, Decode, Clone, PartialEq, Debug, Eq, TypeInfo)]
-pub struct CreateFoundingMemberParameters<AccountId> {
+pub struct CreateMemberParameters<AccountId> {
     /// New member root account.
     pub root_account: AccountId,
 
@@ -248,6 +266,9 @@ pub struct CreateFoundingMemberParameters<AccountId> {
 
     /// Metadata concerning new member.
     pub metadata: Vec<u8>,
+
+    /// Founding Member Status
+    pub is_founding_member: bool,
 }
 
 decl_error! {
@@ -319,7 +340,7 @@ decl_error! {
     }
 }
 
-decl_storage! {
+decl_storage! { generate_storage_info
     trait Store for Module<T: Config> as Membership {
         /// MemberId to assign to next member that is added to the registry, and is also the
         /// total number of members created. MemberIds start at Zero.
@@ -331,7 +352,7 @@ decl_storage! {
 
         /// Registered unique handles hash and their mapping to their owner.
         pub MemberIdByHandleHash get(fn handles) : map hasher(blake2_128_concat)
-            Vec<u8> => T::MemberId;
+            T::Hash => T::MemberId;
 
         /// Referral cut percent of the membership fee to receive on buying the membership.
         pub ReferralCut get(fn referral_cut) : u8;
@@ -341,8 +362,7 @@ decl_storage! {
             T::DefaultMembershipPrice::get();
 
         /// Initial invitation count for the newly bought membership.
-        pub InitialInvitationCount get(fn initial_invitation_count) : u32  =
-            DEFAULT_MEMBER_INVITES_COUNT;
+        pub InitialInvitationCount get(fn initial_invitation_count) : u32;
 
         /// Initial invitation balance for the invited member.
         pub InitialInvitationBalance get(fn initial_invitation_balance) : BalanceOf<T> =
@@ -351,6 +371,11 @@ decl_storage! {
         /// Double of a staking account id and member id to the confirmation status.
         pub(crate) StakingAccountIdMemberStatus get(fn staking_account_id_member_status):
             map hasher(blake2_128_concat) T::AccountId => StakingAccountMemberBinding<T::MemberId>;
+    }
+    add_extra_genesis {
+        build(|_| {
+            InitialInvitationCount::put(T::DefaultMemberInvitesCount::get());
+        });
     }
 }
 
@@ -368,7 +393,7 @@ decl_event! {
             <T as frame_system::Config>::AccountId,
             <T as common::membership::MembershipTypes>::MemberId,
         >,
-        CreateFoundingMemberParameters = CreateFoundingMemberParameters<
+        CreateMemberParameters = CreateMemberParameters<
             <T as frame_system::Config>::AccountId
         >,
       GiftMembershipParameters = GiftMembershipParameters<
@@ -378,7 +403,7 @@ decl_event! {
     {
         MemberInvited(MemberId, InviteMembershipParameters),
         MembershipGifted(MemberId, GiftMembershipParameters),
-        MembershipBought(MemberId, BuyMembershipParameters),
+        MembershipBought(MemberId, BuyMembershipParameters, u32),
         MemberProfileUpdated(
             MemberId,
             Option<Vec<u8>>,
@@ -396,7 +421,7 @@ decl_event! {
         StakingAccountRemoved(AccountId, MemberId),
         StakingAccountConfirmed(AccountId, MemberId),
         MemberRemarked(MemberId, Vec<u8>),
-        FoundingMemberCreated(MemberId, CreateFoundingMemberParameters),
+        MemberCreated(MemberId, CreateMemberParameters, u32),
     }
 }
 
@@ -468,12 +493,13 @@ decl_module! {
             //
             // == MUTATION SAFE ==
             //
+            let initial_invitation_count = Self::initial_invitation_count();
 
             let member_id = Self::insert_member(
                 &params.root_account,
                 &params.controller_account,
                 handle_hash,
-                Self::initial_invitation_count(),
+                initial_invitation_count,
                 false
             );
 
@@ -493,7 +519,9 @@ decl_module! {
             }
 
             // Fire the event.
-            Self::deposit_event(RawEvent::MembershipBought(member_id, params));
+            Self::deposit_event(
+                RawEvent::MembershipBought(member_id, params, initial_invitation_count)
+            );
         }
 
         /// Update member's all or some of name, handle, avatar and about text.
@@ -539,7 +567,7 @@ decl_module! {
                 // remove old handle hash
                 <MemberIdByHandleHash<T>>::remove(&membership.handle_hash);
 
-                <MemberIdByHandleHash<T>>::insert(new_handle_hash.clone(), member_id);
+                <MemberIdByHandleHash<T>>::insert(new_handle_hash, member_id);
 
                 <MembershipById<T>>::insert(&member_id, Membership::<T> {
                     handle_hash: new_handle_hash,
@@ -1172,7 +1200,7 @@ decl_module! {
             Self::deposit_event(RawEvent::MemberRemarked(member_id, msg));
         }
 
-        /// Create a founding member profile as root.
+        /// Create a member profile as root.
         ///
         /// <weight>
         ///
@@ -1183,13 +1211,13 @@ decl_module! {
         /// - DB:
         ///    - O(1) doesn't depend on the state or parameters
         /// # </weight>
-        #[weight = WeightInfoMembership::<T>::create_founding_member(
+        #[weight = WeightInfoMembership::<T>::create_member(
             params.handle.len() as u32,
             params.metadata.len() as u32
         )]
-        pub fn create_founding_member(
+        pub fn create_member(
             origin,
-            params: CreateFoundingMemberParameters<T::AccountId>
+            params: CreateMemberParameters<T::AccountId>
         ) {
             ensure_root(origin)?;
 
@@ -1198,17 +1226,19 @@ decl_module! {
             //
             // == MUTATION SAFE ==
             //
+            let initial_invitation_count = Self::initial_invitation_count();
 
             let member_id = Self::insert_member(
                 &params.root_account,
                 &params.controller_account,
                 handle_hash,
-                Self::initial_invitation_count(),
-                true
+                initial_invitation_count,
+                params.is_founding_member
             );
 
-            // Fire the event.
-            Self::deposit_event(RawEvent::FoundingMemberCreated(member_id, params));
+            Self::deposit_event(
+                RawEvent::MemberCreated(member_id, params, initial_invitation_count)
+            );
         }
     }
 }
@@ -1265,7 +1295,7 @@ impl<T: Config> Module<T> {
     }
 
     // Ensure possible member handle hash is unique.
-    fn ensure_unique_handle_hash(handle_hash: Vec<u8>) -> Result<(), Error<T>> {
+    fn ensure_unique_handle_hash(handle_hash: &T::Hash) -> Result<(), Error<T>> {
         ensure!(
             !<MemberIdByHandleHash<T>>::contains_key(handle_hash),
             Error::<T>::HandleAlreadyRegistered
@@ -1274,7 +1304,7 @@ impl<T: Config> Module<T> {
     }
 
     // Validate handle and return its hash.
-    fn get_handle_hash(handle: &Option<Vec<u8>>) -> Result<Vec<u8>, Error<T>> {
+    fn get_handle_hash(handle: &Option<Vec<u8>>) -> Result<T::Hash, Error<T>> {
         // Handle is required during registration
         let handle = handle
             .as_ref()
@@ -1284,26 +1314,25 @@ impl<T: Config> Module<T> {
             return Err(Error::<T>::HandleMustBeProvidedDuringRegistration);
         }
 
-        let hashed = T::Hashing::hash(handle);
-        let handle_hash = hashed.as_ref().to_vec();
+        let hash = T::Hashing::hash(handle);
 
-        Self::ensure_unique_handle_hash(handle_hash.clone())?;
+        Self::ensure_unique_handle_hash(&hash)?;
 
-        Ok(handle_hash)
+        Ok(hash)
     }
 
     // Inserts a member using a validated information. Sets handle, accounts caches, etc..
     fn insert_member(
         root_account: &T::AccountId,
         controller_account: &T::AccountId,
-        handle_hash: Vec<u8>,
+        handle_hash: T::Hash,
         allowed_invites: u32,
         verified: bool,
     ) -> T::MemberId {
         let new_member_id = Self::members_created();
 
         let membership: Membership<T> = MembershipObject {
-            handle_hash: handle_hash.clone(),
+            handle_hash,
             root_account: root_account.clone(),
             controller_account: controller_account.clone(),
             verified,

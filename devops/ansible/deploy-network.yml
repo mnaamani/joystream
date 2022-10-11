@@ -1,0 +1,54 @@
+---
+# Configure chain spec, start joystream-node and other services on the servers
+
+- name: Check if remote bin/ path dir exists
+  hosts: validators,rpc
+  tasks:
+    - name: Check if remote bin/ path dir exists
+      ansible.builtin.stat:
+        path: "bin/"
+      register: remote_dir_check
+
+- name: Exit if remote dir exists
+  hosts: validators,rpc
+  tasks:
+    - name: Exit if remote dir exists
+      fail: msg="remote bin/ dir already exists"
+      when: remote_dir_check.stat.isdir is defined and remote_dir_check.stat.isdir
+
+# Make sure we are using same binaries on all hosts
+- name: Copy joystream-node binary to all hosts
+  hosts: validators,rpc
+  gather_facts: no
+  tasks:
+    - name: Push joystream-node
+      include_role:
+        name: common
+        tasks_from: push-binaries
+
+- name: Generate genesis config and secrets
+  hosts: validators
+  tasks:
+    - name: Generate chain-spec file and node keys on first validator
+      include_role:
+        name: common
+        tasks_from: create-chain-config
+      vars:
+        first_validator: "{{ groups['validators'][0] }}"
+      when: not (use_local_chain_config is defined) or use_local_chain_config == false
+
+- name: Configure and start Validators
+  hosts: validators
+  tasks:
+    - name: DeployValidators
+      include_role:
+        name: validators
+        tasks_from: main
+
+- name: Configure and start RPC and QueryNode services
+  hosts: rpc
+  tasks:
+    - name: DeployRpc
+      include_role:
+        name: rpc
+        tasks_from: main

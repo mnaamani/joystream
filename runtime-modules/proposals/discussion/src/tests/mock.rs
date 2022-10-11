@@ -64,6 +64,7 @@ parameter_types! {
     pub const MaxWhiteListSize: u32 = 4;
     pub const DefaultMembershipPrice: u64 = 100;
     pub const DefaultInitialInvitationBalance: u64 = 100;
+    pub const DefaultMemberInvitesCount: u32 = 2;
     pub const ReferralCutMaximumPercent: u8 = 50;
     pub const CandidateStake: u64 = 100;
     pub const PostLifeTime: u64 = 10;
@@ -137,6 +138,7 @@ impl membership::Config for Test {
     type StakingCandidateStakingHandler =
         staking_handler::StakingManager<Self, BoundStakingAccountLockId>;
     type CandidateStake = CandidateStake;
+    type DefaultMemberInvitesCount = DefaultMemberInvitesCount;
 }
 
 impl LockComparator<<Test as balances::Config>::Balance> for Test {
@@ -261,10 +263,10 @@ impl MembershipInfoProvider<Test> for () {
 }
 
 parameter_types! {
-    pub const MinNumberOfExtraCandidates: u64 = 1;
+    pub const MinNumberOfExtraCandidates: u32 = 1;
     pub const AnnouncingPeriodDuration: u64 = 15;
     pub const IdlePeriodDuration: u64 = 27;
-    pub const CouncilSize: u64 = 4;
+    pub const CouncilSize: u32 = 4;
     pub const MinCandidateStake: u64 = 11000;
     pub const ElectedMemberRewardPeriod: u64 = 10;
     pub const BudgetRefillAmount: u64 = 1000;
@@ -316,7 +318,7 @@ parameter_types! {
     pub const RevealStageDuration: u64 = 23;
     pub const MinimumVotingStake: u64 = 10000;
     pub const MaxSaltLength: u64 = 32; // use some multiple of 8 for ez testing
-    pub const MaxWinnerTargetCount: u64 = 10;
+    pub const MaxWinnerTargetCount: u32 = 10;
 }
 
 impl referendum::Config<ReferendumInstance> for Test {
